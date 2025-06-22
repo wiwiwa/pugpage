@@ -46,7 +46,7 @@ PugPage is a command-line tool for bundling and serving Pug files, enabling rapi
 
   * Install [Deno](https://docs.deno.com/runtime/getting_started/installation/) first
   * Install `./pugpage`:
-    * `deno compile --allow-read --allow-write --allow-net https://raw.githubusercontent.com/wiwiwa/pugpage/main/src/pugpage.js`
+    * `deno compile --allow-read --allow-write --allow-net --allow-run --no-check --output ./pugpage https://raw.githubusercontent.com/wiwiwa/pugpage/main/src/pugpage.js`
   * To to init a pugpage project: `./pugpage init`
   * To start the development server: `./pugpage dev`
   * To run tests: `./pugpage test`
@@ -69,7 +69,7 @@ PugPage is a command-line tool for bundling and serving Pug files, enabling rapi
       styles.css
       /image
         user.jpg
-    /tests
+    /test
       example.test.js
   ```
 

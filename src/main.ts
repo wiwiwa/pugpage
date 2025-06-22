@@ -4,8 +4,9 @@
  * PugPage CLI Tool
  * Commands: init, dev, test, dist
  */
-import { parse } from "jsr:@std/flags";
+import { parseArgs } from "jsr:@std/cli";
 import { initProject } from "./init.ts";
+import { startDevServer } from "./dev.ts";
 
 function printHelp() {
   console.log(`PugPage CLI
@@ -19,11 +20,6 @@ Commands:
 `);
 }
 
-async function startDevServer() {
-  console.log("Starting development server with live reload...");
-  // TODO: Serve Pug files and assets, watch for changes, livereload
-}
-
 async function runTests() {
   console.log("Running tests with Jest and jsdom (watch mode)...");
   // TODO: Integrate with Jest, watch for file changes
@@ -35,9 +31,8 @@ async function buildDist() {
 }
 
 if (import.meta.main) {
-  const args = parse(Deno.args);
-  const [command] = args._;
-  switch (command) {
+  const args = parseArgs(Deno.args);
+  switch (args._[0]) {
     case "init":
       await initProject();
       break;
