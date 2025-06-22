@@ -3,11 +3,11 @@ PugPage is a command-line tool for bundling and serving Pug files, enabling rapi
 # Features
 
 - **Pug Extensions**
-  - **Builtin Filter `:pug`**
+  - **Builtin Filter `:pug`**: to load sub-pugpage and render with restful JSON data
     - Usage: `:pug(src='user.pug' rest='/api/user/1000')`
     - `src`: PugPage to render.
     - `rest`: RESTful JSON resource for rendering.
-    - If `src` is omitted, child content is re-rendered with data.
+      - If `src` is omitted, child content is re-rendered with data.
   - **Builtin Filter `:less`**
   - **Variables**
     - `$user`: Current logged-in user object.
@@ -56,7 +56,7 @@ PugPage is a command-line tool for bundling and serving Pug files, enabling rapi
   ## Example Directory Structure
   ```
   /project-root
-    /pages          # root of pug pages
+    /src          # root of pug pages
       index.pug
       layout.pug    # default layout file
       /system
@@ -66,8 +66,9 @@ PugPage is a command-line tool for bundling and serving Pug files, enabling rapi
           show.pug  # example url /system/user/1000
           edit.pug  # example url /system/user/1000/edit
     /public
-      main.js
       styles.css
+      /image
+        user.jpg
     /tests
       example.test.js
   ```
