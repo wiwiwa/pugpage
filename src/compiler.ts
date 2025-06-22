@@ -1,7 +1,7 @@
 import { walk } from "jsr:@std/fs/walk";
 import { compileClient } from 'npm:pug';
 
-export async function compileFile(filePath: string): Promise<string> {
+async function compileFile(filePath: string): Promise<string> {
   const pugContent = await Deno.readTextFile(filePath);
   return compileClient(pugContent, {
     compileDebug: false,
@@ -22,7 +22,7 @@ export async function compileDirectory(dirPath: string): Promise<string> {
 }
 
 function renderJS(templates:string) { return `
-return (filePath) => {
+function pugPageFunction(filePath) {
   switch (filePath) {
     ${templates}
     default: return null;

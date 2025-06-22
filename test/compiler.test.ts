@@ -5,9 +5,9 @@ import {assertMatch} from 'jsr:@std/assert';
 
 Deno.test('compiler.compile', async () => {
     const js = await compileDirectory('test');
+    const pugPageFunction = new Function(js+"\nreturn pugPageFunction;")();
     const document = new DOMParser().parseFromString(`<!DOCTYPE html><body></body>`, 'text/html');
-    const pugFunction = new Function(js)();
-    renderInit(document, pugFunction);
+    renderInit(document, pugPageFunction);
     document.body.innerHTML = renderPug('/index', {title: 'Test Page'});
     assertMatch(document.textContent, /Test/);
 });

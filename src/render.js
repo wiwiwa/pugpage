@@ -5,7 +5,7 @@ export function renderInit(doc, pugFunc) {
   document = doc;
   pugFunction = pugFunc;
   document.addEventListener("DOMContentLoaded", () => {
-      renderPug('/index.pug', { title: 'Hello World' })
+      document.body.innerHTML = renderPug('/index', { title: 'Hello World' });
   });
 }
 
