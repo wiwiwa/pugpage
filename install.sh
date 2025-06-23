@@ -11,5 +11,5 @@ which deno >/dev/null 2>&1 || {
 echo "Installing PugPage ..."
 deno compile \
     --allow-read --allow-write --allow-net  --allow-env --allow-sys \
-    --include $DIR/render/index.html --include $DIR/render/render.js \
+    --include $DIR/render/render.js \
     --no-check --output ./pugpage $MAIN

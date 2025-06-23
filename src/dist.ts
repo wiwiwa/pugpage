@@ -18,6 +18,17 @@ export async function buildDist(opts: { root?: string } = {}) {
   console.log(`Production build created at ${distDir}`);
 }
 
-export function indexHtml() { 
-  return Deno.readTextFileSync(new URL("./render/index.html", import.meta.url));
+export function indexHtml() { return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>PugPage Dev Server</title>
+  <script type="module" src="/dist.js"></script>
+  <script>
+    const es = new EventSource('/__livereload');
+    es.onmessage = e => e.data==='reload' && location.reload();
+  </script>
+</head>
+<body />
+</html>`;
 }

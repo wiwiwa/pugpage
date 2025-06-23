@@ -1,6 +1,15 @@
 import { exists } from "jsr:@std/fs/exists";
 import { ensureDir } from "jsr:@std/fs/ensure-dir";
 
+const samplePug = `
+h1 Hello, PugPage!
+`;
+
+const gitignore = `
+.*
+pugpage
+dist/
+`
 export async function initProject() {
   const confirmed = confirm("This will initialize a new PugPage project in the current directory. Continue?");
   if (!confirmed) {
@@ -12,7 +21,6 @@ export async function initProject() {
   // Define recommended structure
   const dirs = [
     "public",
-    "src",
     "tests"
   ];
 
@@ -23,17 +31,15 @@ export async function initProject() {
     }
 
   // Create sample files
-  await Deno.writeTextFile("src/index.pug", samplePug);
+  await writeFile("index.pug", samplePug);
+  await writeFile(".gitignore", gitignore);
 
   console.log("Project files created.");
 }
 
-function samplePug() {
-  return `doctype html
-html
-  head
-    title PugPage Sample
-  body
-    h1 Hello, PugPage!
-`;
+async function writeFile(path: string, content: string) {
+  if(await exists(path))
+    return console.log(`Skipping creation of ${path} as it already exists.`);
+  await Deno.writeTextFile(path, content);
+  console.log(`Created file: ${path}`);
 }
