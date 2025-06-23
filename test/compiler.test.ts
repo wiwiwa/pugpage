@@ -1,5 +1,5 @@
 import {compileDirectory} from '../src/compiler.ts';
-import {renderInit, renderPug} from '../src/render.js';
+import {renderInit, renderPug} from '../src/render/render.js';
 import {DOMParser} from "jsr:@b-fuze/deno-dom";
 import {assertMatch} from 'jsr:@std/assert';
 

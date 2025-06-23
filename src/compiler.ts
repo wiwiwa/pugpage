@@ -11,11 +11,12 @@ async function compileFile(filePath: string): Promise<string> {
 /** Compiles all Pug files in a directory into a single JavaScript string */
 export async function compileDirectory(dirPath: string): Promise<string> {
   let js = "";
-  const basePathLen = dirPath.length;
+  const basePathLen = Deno.realPathSync(dirPath).length;
   for await (const entry of walk(dirPath, {exts:["pug"]})) {
     if (!entry.isFile) continue;
-    const urlPath = entry.path.slice(basePathLen, entry.path.length-4);
-    const funcString = await compileFile(entry.path);
+    const path = Deno.realPathSync(entry.path);
+    const urlPath = path.slice(basePathLen, path.length-4);
+    const funcString = await compileFile(path);
     js += `case '${urlPath}': { ${funcString}; return template; }\n`;
   }
   return renderJS(js);
