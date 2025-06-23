@@ -6,19 +6,27 @@
  */
 
 import { serveDir } from "jsr:@std/http/file-server";
-import { bundleJS } from "./dist.ts";
+import { bundleJS, indexHtml } from "./dist.ts";
 
 let livereloadClients: Array<(msg: string) => void> = [];
 let bundleJSStr = "";
 
-export async function startDevServer() {
-  const fsRoot = Deno.cwd();
-  console.log(`Starting development server in ${fsRoot} ...`);
+/**
+ * Starts the development server.
+ * @param opts - Options for the development server.
+ * @param opts.root - The root directory to serve. Defaults to the current working directory.
+ * @param opts.port - The port to listen on. Defaults to 8000.
+ */
+export async function startDevServer(opts: { root?: string; port?: number } = {}) {
+  const fsRoot = opts.root ? opts.root : Deno.cwd();
+  const port = opts.port ?? 8000;
+  console.log(`Starting development server in ${fsRoot} on port ${port} ...`);
   bundleJSStr = await bundleJS(fsRoot);
 
-  Deno.serve(async (req) => {
+  // Fix Deno.serve usage and lint issues
+  Deno.serve({ port }, async (req: Request) => {
     switch(new URL(req.url).pathname){
-      case '/bundle.js':
+      case '/dist.js':
         return new Response(bundleJSStr, {headers: {'Content-Type': 'application/javascript'}});
       case '/__livereload':
         return livereloadSSE();
@@ -27,7 +35,7 @@ export async function startDevServer() {
     if((await resp).status===404 && req.headers.get('accept')?.includes('text/html') )
       return indexResponse();
     return resp;
-  }, { port: 8080 });
+  });
 
   watchAndReload(fsRoot);
 }
@@ -38,7 +46,7 @@ function livereloadSSE(): Response {
     start(controller) {
       send = (msg: string) => {
         try{ controller.enqueue(`data: ${msg}\n\n`);}
-        catch(e){}
+        catch(_e){/* ignore */}
       };
       livereloadClients.push(send);
     },
@@ -65,22 +73,12 @@ async function watchAndReload(dir: string) {
     }
 }
 
-const DEFAULT_INDEX = `<!DOCTYPE html>
-<html lang=\"en\">
-<head>
-  <meta charset=\"UTF-8\">
-  <title>PugPage Dev Server</title>
-  <script type="module" src="/bundle.js"></script>
-  <script>
-    const es = new EventSource('/__livereload');
-    es.onmessage = e => e.data==='reload' && location.reload();
-  </script>
-</head>
-<body />
-</html>`;
 function indexResponse(){
-  return new Response(DEFAULT_INDEX, {
+  return new Response(indexHtml(), {
     status: 404,
     headers: { 'Content-Type': 'text/html' }
   })
 };
+
+import.meta.main &&
+  await startDevServer();
