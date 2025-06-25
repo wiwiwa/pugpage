@@ -1,3 +1,4 @@
+import {minify} from "https://esm.sh/terser@5.27.0";
 import { compileDirectory } from "./compiler.ts";
 
 export async function bundleJS(dir: string): Promise<string> {
@@ -7,15 +8,13 @@ export async function bundleJS(dir: string): Promise<string> {
   return js + render + init;
 }
 
-// Update buildDist to accept options
-export async function buildDist(opts: { root?: string } = {}) {
-  const root = opts.root ? opts.root : Deno.cwd();
-  const distDir = new URL("./dist", `file://${root}/`);
-  await Deno.mkdir(distDir, { recursive: true });
-  await Deno.writeTextFile(new URL("index.html", distDir), indexHtml());
-  const jsContent = await bundleJS(root);
-  await Deno.writeTextFile(new URL("dist.js", distDir), jsContent);
-  console.log(`Production build created at ${distDir}`);
+export async function buildDist(opts: { root: string, out: string }) {
+  await Deno.mkdir(opts.out, { recursive: true });
+  await Deno.writeTextFile(`${opts.out}/index.html`, indexHtml());
+  const jsContent = await bundleJS(opts.root);
+  const minified = await minify(jsContent);
+  await Deno.writeTextFile(`${opts.out}/dist.js`, minified.code||jsContent);
+  console.log(`Production JS bundle written to ${opts.out}`);
 }
 
 export function indexHtml() { return `<!DOCTYPE html>

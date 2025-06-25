@@ -1,5 +1,3 @@
-#!/usr/bin/env -S deno run --allow-read --allow-write --allow-net --allow-run
-
 /**
  * PugPage CLI Tool
  * Commands: init, dev, test, dist
@@ -15,7 +13,7 @@ Usage:
   pugpage init
   pugpage dev [--root=.] [--port=8000]
   pugpage test [--root=.]
-  pugpage dist [--root=.]
+  pugpage dist [--root=.] [--out=$root/dist]
 
 Commands:
   init    Initialize a new PugPage project
@@ -32,7 +30,7 @@ async function runTests(opts: { root?: string } = {}) {
 
 if (import.meta.main) {
   const args = parseArgs(Deno.args,{
-    string: ["root"],
+    string: ["root", "out"],
     default: {
       root: ".",
       port: 8000,
@@ -56,6 +54,7 @@ if (import.meta.main) {
     case "dist":
       await buildDist({
         root: args.root,
+        out: args.out || args.root+"/dist",
       });
       break;
     default:
