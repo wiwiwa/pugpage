@@ -5,7 +5,7 @@
  * - Handles 404 to serve /index.html
  */
 
-import { serveDir } from "jsr:@std/http/file-server";
+import { serveDir } from "@std/http/file-server";
 import { bundleJS, indexHtml } from "./dist.ts";
 
 let livereloadClients: Array<(msg: string) => void> = [];

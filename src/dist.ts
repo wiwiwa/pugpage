@@ -1,4 +1,4 @@
-import {minify} from "https://esm.sh/terser@5.27.0";
+import {minify} from "terser";
 import { compileDirectory } from "./compiler.ts";
 
 export async function bundleJS(dir: string): Promise<string> {

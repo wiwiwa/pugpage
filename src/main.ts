@@ -2,7 +2,7 @@
  * PugPage CLI Tool
  * Commands: init, dev, test, dist
  */
-import { parseArgs } from "jsr:@std/cli";
+import { parseArgs } from "@std/cli";
 import { startDevServer } from "./dev.ts";
 import { buildDist } from "./dist.ts";
 import { initProject } from "./init.ts";

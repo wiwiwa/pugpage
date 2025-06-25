@@ -1,5 +1,5 @@
-import { walk } from "jsr:@std/fs/walk";
-import { compileClient } from 'npm:pug';
+import { walk } from "@std/fs/walk";
+import { compileClient } from 'pug';
 
 async function compileFile(filePath: string): Promise<string> {
   const pugContent = await Deno.readTextFile(filePath);

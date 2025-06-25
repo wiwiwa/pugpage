@@ -1,0 +1,14 @@
+{
+  "name": "@wiwiwa/pugpage",
+  "version": "0.1.0",
+  "license": "MIT",
+  "exports": "./src/main.ts",
+  "imports": {
+    "@std/cli": "jsr:@std/cli@^1.0",
+    "@std/flags": "jsr:@std/flags@^0.224",
+    "@std/fs": "jsr:@std/fs@^1.0",
+    "@std/http": "jsr:@std/http@^1.0",
+    "pug": "npm:pug@^3",
+    "terser": "npm:terser@^5"
+  }
+}

@@ -1,5 +1,5 @@
-import { exists } from "jsr:@std/fs/exists";
-import { ensureDir } from "jsr:@std/fs/ensure-dir";
+import { exists } from "@std/fs/exists";
+import { ensureDir } from "@std/fs/ensure-dir";
 
 const samplePug = `
 h1 Hello, PugPage!
