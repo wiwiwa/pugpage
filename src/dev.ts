@@ -17,27 +17,25 @@ let bundleJSStr = "";
  * @param opts.root - The root directory to serve. Defaults to the current working directory.
  * @param opts.port - The port to listen on. Defaults to 8000.
  */
-export async function startDevServer(opts: { root?: string; port?: number } = {}) {
-  const fsRoot = opts.root ? opts.root : Deno.cwd();
-  const port = opts.port ?? 8000;
-  console.log(`Starting development server in ${fsRoot} on port ${port} ...`);
-  bundleJSStr = await bundleJS(fsRoot);
+export async function startDevServer(opts: { root:string; port:number }) {
+  console.log(`Starting development server in ${opts.root} on port ${opts.port} ...`);
+  bundleJSStr = await bundleJS(opts.root);
 
   // Fix Deno.serve usage and lint issues
-  Deno.serve({ port }, async (req: Request) => {
+  Deno.serve({ port: opts.port }, async (req: Request) => {
     switch(new URL(req.url).pathname){
       case '/dist.js':
         return new Response(bundleJSStr, {headers: {'Content-Type': 'application/javascript'}});
       case '/__livereload':
         return livereloadSSE();
     }
-    const resp = serveDir(req, {fsRoot});
+    const resp = serveDir(req, {fsRoot: opts.root});
     if((await resp).status===404 && req.headers.get('accept')?.includes('text/html') )
       return indexResponse();
     return resp;
   });
 
-  watchAndReload(fsRoot);
+  watchAndReload(opts.root);
 }
 
 function livereloadSSE(): Response {
@@ -74,11 +72,8 @@ async function watchAndReload(dir: string) {
 }
 
 function indexResponse(){
-  return new Response(indexHtml(), {
+  return new Response(indexHtml('/dist.js'), {
     status: 404,
     headers: { 'Content-Type': 'text/html' }
   })
 };
-
-import.meta.main &&
-  await startDevServer();

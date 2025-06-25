@@ -23,9 +23,8 @@ Commands:
 `);
 }
 
-async function runTests(opts: { root?: string } = {}) {
-  const root = opts.root ?? ".";
-  console.log(`Running tests with Jest and jsdom (watch mode) in ${root}...`);
+async function runTests(opts: { root: string } = { root: "." }) {
+  console.error(`Not implemented yet: test`);
 }
 
 if (import.meta.main) {

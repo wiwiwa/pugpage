@@ -10,23 +10,31 @@ export async function bundleJS(dir: string): Promise<string> {
 
 export async function buildDist(opts: { root: string, out: string }) {
   await Deno.mkdir(opts.out, { recursive: true });
-  await Deno.writeTextFile(`${opts.out}/index.html`, indexHtml());
-  const jsContent = await bundleJS(opts.root);
+  let jsContent = await bundleJS(opts.root);
   const minified = await minify(jsContent);
-  await Deno.writeTextFile(`${opts.out}/dist.js`, minified.code||jsContent);
+  jsContent = minified.code||jsContent;
+  const hashBuffer = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(jsContent));
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  const hashHex = hashArray.map(b => b.toString(16).padStart(2, "0")).join("").slice(0, 8);
+  const jsFile = `dist.${hashHex}.js`;
+  await Deno.writeTextFile(opts.out+"/"+jsFile, jsContent);
+  await Deno.writeTextFile(`${opts.out}/index.html`, indexHtml(jsFile,true));
   console.log(`Production JS bundle written to ${opts.out}`);
 }
 
-export function indexHtml() { return `<!DOCTYPE html>
+export function indexHtml(jsFile:string, isProduction=false): string {
+  const liveReload = isProduction ? `` : `
+  <script>
+    const es = new EventSource('/__livereload');
+    es.onmessage = e => e.data==='reload' && location.reload();
+  </script>`;
+  return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <title>PugPage Dev Server</title>
-  <script type="module" src="/dist.js"></script>
-  <script>
-    const es = new EventSource('/__livereload');
-    es.onmessage = e => e.data==='reload' && location.reload();
-  </script>
+  <script type="module" src="${jsFile}"></script>
+  ${liveReload}
 </head>
 <body />
 </html>`;
