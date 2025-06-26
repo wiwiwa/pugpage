@@ -8,7 +8,7 @@ PugPage is a command-line tool and runtime for developing, bundling, and serving
 
 ## 1. System Components
 
-### 1.1 CLI Tool (`pugpage`)
+### CLI Tool (`pugpage`)
 
 `pubpage` is a Deno script:
 - **init**: Initializes a new PugPage project with a recommended directory structure and sample files.
@@ -17,51 +17,42 @@ PugPage is a command-line tool and runtime for developing, bundling, and serving
   - Watch for file changes, re-run test when file changes
 - **dist**: Builds the application for production, bundling Pug, JS, CSS, and assets.
 
-### 1.2 PugPage Compiler
-- Extends Pug with custom filters (`:pug`, `:less`), variable injection, and tag attribute controls.
-- Handles layout inheritance via `layout.pug`.
-- Integrates RESTful data sources for dynamic rendering.
+### Development Server
+* Development server provide the following url
+  * `/index.html`: provided by PugPage render
+    * `XXXXXX` is the hash of JS content
+  * `/compiled_pug.js`: See PugPage Render
+  * `/pugpage.js`: See design of PugPage Render
+    * In addition, it receive Server Sent Event (SSE) to reload browser
+  * `/livereload`: Compile pug pages, and return Server Sent Event (SSE) when files change
+  * Other static asset
+  * Handles 404 to serve `/index.html`
 
-### 1.3 Development Server
-- **livereload**: Integrates `livereload` to automatically refresh the browser when file changes.
-  - Serves compiled Pug pages and static assets.
-  - Compile `.pug` file when file changes
-  - Handles 404 to serve `/index.html`
-
-### 1.4 Production Bundler
-- Compiles and bundles Pug templates, JS, and CSS.
-- Ensures all routes resolve to `/index.html` for SPA navigation.
-- Optimizes assets for deployment.
-
----
-
-## 2. Key Features & Architecture
-
-### PugPage Compiler
-* **Builtin Filters**
-  - **`:pug`**: Include other Pug file
-  - **`:less`**: Compiles LESS to CSS, scoped to the parent element.
-* **Tag Attribute**
-  - Compile attribute `$role` and `$lang` attributes to `if` directive
-* **Layout Inheritance**
-  - On page compiling, searches for `layout.pug` in the current or parent directories and applies it via Pug's `extends`.
-* Scoped CSS
-  - When compiling `style` tags:
-    - Apply a radom class name to parent element
-    - Constrain rule in style with random class name
-* List of bundled file
+### Dist Builder
+Dist builder outputs `index.html` and `dist.XXXXXX.js`.
+* `index.html`: load `dist.XXXXXX.js`. See design of PugPage render
+* `/dist.XXXXXX.js`: is bundle of `/pugpage.js`
+  * `XXXXXX` is hash of JS content
 
 ### PugPage Render
+* `index.html`: loads `pugpage.js` (or `/dist.XXXXXX.js`)
+* `pugpage.js`
+  * Import `pug_pages()` from `compiled.pug.js`. When called with pug file path, it returns the pugpage function. See PugPage compiler.
+  * Register HTML custom element `pug-page`, which
+    * Fetch restful JSON data defined by attribute `rest` from server
+    * Find PugPage function by calling `pug_pages()` with  attribute value `src`
+    * Render shadowRoot by calling PugPage function with restful data
+  * PugPage routing
+    * Parse target PugPage to load from url
+    * Load the PugPage
+      - Try different PugPage path as described by README.md
+    * Render PugPage with data:
+      * Global variables:
+        - `$user`: Injected empty object.
+        - `$page`: Page context (path, args, params).
 
-At runtime, PugPage render page:
-* Render context passed in:
-  - `$user`: Runtime: Injected empty object.
-  - `$page`: Runtime: Page context (path, args, params).
-* URL Routing Algorithm
-  * Monitor url change event of browser
-    - Find url path in compiled file list using a fallback algorithm
-    - Populating `$page.args` as needed.
-  - Handles event of `<a>` and `<form>` elements, updating the browser URL and page state without reloads.
-* RESTful Data Integration
-  - Fetches JSON data from REST endpoints for use in Pug templates.
-  - Replace child nodes when rest data is ready
+### PugPage Compiler
+- Each Pug file is compiled to a PugPage function
+  - When a tag has `$role` or `$lang` attributes, `if` directive is inserted to test the condition
+  - `layout.pug` files in current directory of file and parent directories are applied by inserting `Extends` and `Block`
+- All PugPage functions are combine into a single function `pug_pages()` in `compiled.pug.js`, when called with Pug file path, it returns the PugPage function
