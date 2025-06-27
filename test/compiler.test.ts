@@ -8,13 +8,10 @@ declare global {
 }
 
 Deno.test('compiler.compile', async () => {
-    const js = await compileDirectory('test');
+    const js = await compileDirectory('test/pages');
     globalThis.pug_pages = new Function(js+"\nreturn pug_pages;")();
 
-    const dom = new JSDOM(`
-<body>
-  <pug-page src="/index" rest="./test-data.json"></pug-page>
-</body>`);
+    const dom = new JSDOM('', { url: 'http://localhost/' });
     globalThis.window = dom.window;
     dom.window.fetch = async (url:string) => {
       const file = import.meta.resolve(url)
@@ -23,6 +20,9 @@ Deno.test('compiler.compile', async () => {
     await import('../src/render/render.js');
 
     const document = dom.window.document;
-    const page = document.querySelector('pug-page');
-    assertMatch(page.shadowRoot.textContent, /Hello/);
+    assertMatch(document.body.textContent, /Hello/);
+
+    const showUser = document.querySelector('a.showUser');
+    showUser?.click();
+    assertMatch(document.body.textContent, /1000/);
 });
