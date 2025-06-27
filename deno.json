@@ -8,7 +8,8 @@
     "@std/flags": "jsr:@std/flags@^0.224",
     "@std/fs": "jsr:@std/fs@^1.0",
     "@std/http": "jsr:@std/http@^1.0",
+    "jsdom": "npm:jsdom@^26",
     "pug": "npm:pug@^3",
-    "terser": "npm:terser@^5"
+    "terser": "npm:terser@^5.43.1"
   }
 }

@@ -4,8 +4,7 @@ import { compileDirectory } from "./compiler.ts";
 export async function bundleJS(dir: string): Promise<string> {
   const js = await compileDirectory(dir);
   const render = Deno.readTextFileSync(new URL("./render/render.js", import.meta.url));
-  const init = `renderInit(window.document, pugPageFunction);\n`
-  return js + render + init;
+  return js + render;
 }
 
 export async function buildDist(opts: { root: string, out: string }) {
@@ -32,10 +31,10 @@ export function indexHtml(jsFile:string, isProduction=false): string {
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>PugPage Dev Server</title>
   <script type="module" src="${jsFile}"></script>
   ${liveReload}
 </head>
-<body />
+<body>
+  <pug-page src="/index" />
 </html>`;
 }

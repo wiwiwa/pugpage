@@ -23,7 +23,7 @@ export async function compileDirectory(dirPath: string): Promise<string> {
 }
 
 function renderJS(templates:string) { return `
-function pugPageFunction(filePath) {
+function pug_pages(filePath) {
   switch (filePath) {
     ${templates}
     default: return null;

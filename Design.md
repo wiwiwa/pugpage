@@ -21,7 +21,6 @@ PugPage is a command-line tool and runtime for developing, bundling, and serving
 * Development server provide the following url
   * `/index.html`: provided by PugPage render
     * `XXXXXX` is the hash of JS content
-  * `/compiled_pug.js`: See PugPage Render
   * `/pugpage.js`: See design of PugPage Render
     * In addition, it receive Server Sent Event (SSE) to reload browser
   * `/livereload`: Compile pug pages, and return Server Sent Event (SSE) when files change
@@ -37,7 +36,7 @@ Dist builder outputs `index.html` and `dist.XXXXXX.js`.
 ### PugPage Render
 * `index.html`: loads `pugpage.js` (or `/dist.XXXXXX.js`)
 * `pugpage.js`
-  * Import `pug_pages()` from `compiled.pug.js`. When called with pug file path, it returns the pugpage function. See PugPage compiler.
+  * Import `pug_pages()` provided by Pugpage compiler. When called with pug file path, it returns the pugpage function. See PugPage compiler.
   * Register HTML custom element `pug-page`, which
     * Fetch restful JSON data defined by attribute `rest` from server
     * Find PugPage function by calling `pug_pages()` with  attribute value `src`
