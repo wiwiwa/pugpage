@@ -2,28 +2,27 @@ PugPage is a command-line tool for bundling and serving Pug files, enabling rapi
 
 # Features
 
-- **Pug Extensions**
-  - **Custom Element `pug-page`**: to load sub-pugpage and render with restful JSON data
-    - Usage: `pug-page(src='user.pug' rest='/api/user/1000')`
-    - `src`: PugPage to render.
-    - `rest`: RESTful JSON resource for rendering.
-      - If `src` is omitted, child content is re-rendered with data.
-  - **Builtin Filter `:less`**
-  - **Variables**
-    - `$user`: Current logged-in user object.
-      - `roles`: Array of roles (strings).
-      - `lang`: User language (default: null).
-    - `$page`: Current page object.
-      - `path`: Page path.
-      - `args`: Array of arguments (see URL handling).
-      - `params`: Query parameters (e.g., `/user/?id=1` → `{id: '1'}`).
-  - **Tag Attributes**
-    - `$role`: String or array. Renders tag only if `$user.roles` matches.
-      - Example: `div($role='USER_ADMIN')` renders only for users with the `USER_ADMIN` role.
-    - `$lang`: String or array. Renders tag only if `$user.lang` matches.
-      - Example: `div($lang='CN')` renders only for users with language `CN`.
+- **Custom Element `pug-page`**
+  - Usage: `pug-page(src='user.pug' rest='/api/user/1000')`
+  - `src`: Pug template to render
+  - `rest`: RESTful JSON resource for rendering
+- **Variables**
+  - `$user`: Current logged-in user object.
+    - `roles`: Array of roles (strings).
+    - `lang`: User language (default: null).
+  - `$page`: Current page object.
+    - `path`: Page path.
+    - `args`: Array of arguments (see URL handling).
+    - `params`: Query parameters (e.g., `/user/?id=1` returns `{id: '1'}`).
+- **Tag Attributes**
+  - `$role`: String or array. Renders tag only if `$user.roles` matches.
+    - Example: `div($role='USER_ADMIN')` renders only for users with the `USER_ADMIN` role.
+  - `$lang`: String or array. Renders tag only if `$user.lang` matches.
+    - Example: `div($lang='CN')` renders only for users with language `CN`.
 - **Layout File `layout.pug`**
-  - When rendering a PugPage, `layout.pug` in the current or parent directories is automatically applied via Pug `extends`.
+  - When rendering a page, `layout.pug` in the current or parent directories is automatically applied. Tag `slot` is replaced by renderred content of sub-layout or final pag
+  - Use `extends my-layout` to specify a custom layout file (resolved relative to the page).
+    - `extends NONE` disable layout auto-application.
 - **URL Handling**
   - On browser URL change, PugPage searches for the appropriate page using the following algorithm:
     - For URL `/system/user/1/edit`:
@@ -36,50 +35,61 @@ PugPage is a command-line tool for bundling and serving Pug files, enabling rapi
   - Clicking an `<a>` tag updates the URL.
   - Submitting a `<form>` expects a JSON response and updates the URL to the `href` attribute.
     - Example: `form(action='/api/user/1' href='/user/1')` posts to `/api/user/1` and redirects to `/user/1`.
-  - Anti Page Reloading: It is expected the server hosts the production JS file to return `/index.html` when 404 page should be returned
+  - Anti Page Reloading: It is expected the server hosts the production JS file to return `/index.html` when 404 page should be returned.
 - **Web Component Support**
-  - Any third party web component should be able to be used in pugpage
+  - Third-party web components work in pug templates. Unknown tags pass through to the DOM as-is.
 - **Scoped CSS**
-  - By default, `style` element is scoped to its parent HTML tag
+  - By default, `style` elements are scoped to their parent template.
 
-  # Usage
+# Usage
 
-  * Install [Deno](https://docs.deno.com/runtime/getting_started/installation/) first
-  * Install `./pugpage`:
-    * `curl -sL https://raw.githubusercontent.com/wiwiwa/pugpage/main/install.sh | sh`
-  * To to init a pugpage project: `./pugpage init`
-  * To start the development server: `./pugpage dev`
-  * To run tests: `./pugpage test`
-    * To run tests when file changes: `./pugpage test -w`
-  * To build for production: `./pugpage dist`
+1. Install [Deno](https://docs.deno.com/runtime/getting_started/installation/)
+2. Install the `pugpage` binary:
+   ```
+   curl -sL https://raw.githubusercontent.com/wiwiwa/pugpage/master/install.sh | sh
+   ```
+3. Initialize a project: `./pugpage init`
+4. Start the dev server: `./pugpage dev`
+  - The dev server watches `.pug` files for changes and reloads the browser automatically.
+5. Build for production: `./pugpage dist`
 
-  ## Example Directory Structure
-  ```
-  /project-root
-    /src          # root of pug pages
-      index.pug
-      layout.pug    # default layout file
-      /system
-        layout.pug  # layout file for 
-        /user
-          index.pug # example url /system/user/
-          show.pug  # example url /system/user/1000
-          edit.pug  # example url /system/user/1000/edit
-    /public
-      styles.css
-      /image
-        user.jpg
-    /test
-      example.test.js
-  ```
+## CLI Reference
+
+```
+pugpage init                        Initialize a new project
+pugpage dev [--root=.] [--port=8000]  Start dev server with live reload
+pugpage dist [--root=.] [--out=$root/dist]  Build for production
+```
+
+## Example Directory Structure
+
+```
+/project-root
+  index.pug             # entry page
+  layout.pug            # default layout
+  /system
+    layout.pug          # layout for /system/*
+    /user
+      index.pug         # /system/user/
+      show.pug          # /system/user/1000
+      edit.pug          # /system/user/1000/edit
+  /public
+    styles.css
+    /image
+      user.jpg
+```
 
 # Development
 
 ```bash
-# Run tests automatically on code changes
-$ deno test
-# Run test page in browser with live reload
-$ deno run --allow-all ./src/dev.ts --root ./test
-# Build final output of compiled files
-$ deno compile
+# Run tests
+$ deno test --allow-all
+
+# Start dev server against test pages
+$ deno run --allow-all ./src/main.ts dev --root ./test/pages
+
+# Build production output
+$ deno bundle --minify -o ./dist/render.min.js ./src/render/render.js
+$ git tag $NEW_VERSION
+$ git push --all
 ```

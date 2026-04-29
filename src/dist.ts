@@ -1,15 +1,15 @@
 import {minify} from "terser";
 import { compileDirectory } from "./compiler.ts";
 
-export async function bundleJS(dir: string): Promise<string> {
-  const js = await compileDirectory(dir);
-  const render = Deno.readTextFileSync(new URL("./render/render.js", import.meta.url));
-  return js + render;
+export function readRenderJs(): string {
+  return Deno.readTextFileSync(new URL("./render/render.js", import.meta.url));
 }
 
 export async function buildDist(opts: { root: string, out: string }) {
   await Deno.mkdir(opts.out, { recursive: true });
-  let jsContent = await bundleJS(opts.root);
+  let jsContent = await compileDirectory(opts.root, {
+    renderUrl: "https://cdn.jsdelivr.net/gh/wiwiwa/pugpage@master/dist/render.min.js",
+  });
   const minified = await minify(jsContent);
   jsContent = minified.code||jsContent;
   const hashBuffer = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(jsContent));

@@ -1,28 +1,23 @@
-import {compileDirectory} from '../src/compiler.ts';
-import {assertMatch} from 'jsr:@std/assert';
-import {JSDOM} from 'npm:jsdom';
+import { startDevServer } from "../src/dev.ts";
+import { chromium } from "playwright";
+import { expect } from "@playwright/test";
 
-// Add global declaration for pug_pages with type unknown
-declare global {
-  var pug_pages: unknown;
-}
+Deno.test("compiler.compile", async () => {
+  const server = await startDevServer({ root: "test/pages", port: 0, watch: false });
+  const { port } = server.addr as Deno.NetAddr;
 
-Deno.test('compiler.compile', async () => {
-    const js = await compileDirectory('test/pages');
-    globalThis.pug_pages = new Function(js+"\nreturn pug_pages;")();
+  const browser = await chromium.launch({ args: ["--no-sandbox"] });
+  const page = await browser.newPage();
+  await page.goto(`http://localhost:${port}/`);
 
-    const dom = new JSDOM('', { url: 'http://localhost/' });
-    globalThis.window = dom.window;
-    dom.window.fetch = async (url:string) => {
-      const file = import.meta.resolve(url)
-      return { json: async () => JSON.parse(Deno.readTextFileSync(new URL(file).pathname)) };
-    };
-    await import('../src/render/render.js');
+  await expect(page.locator("body")).toContainText("Hello");
 
-    const document = dom.window.document;
-    assertMatch(document.body.textContent, /Hello/);
+  await page.locator("a.showUser").click();
+  await expect(page.locator("body")).toContainText("Alice");
+  await expect(page.locator("h1")).toContainText("Home Layout");
+  const styleText = await page.locator("style").evaluateAll((els) => els.map((e) => e.textContent).join(""));
+  expect(styleText).toContain("list-style");
 
-    const showUser = document.querySelector('a.showUser');
-    showUser?.click();
-    assertMatch(document.body.textContent, /1000/);
+  await browser.close();
+  server.shutdown();
 });

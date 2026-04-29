@@ -2,7 +2,7 @@
 
 ## Overview
 
-PugPage is a command-line tool and runtime for developing, bundling, and serving Pug-based web applications. It provides a streamlined workflow for rapid development, live reloading, and production builds, while supporting advanced Pug features, RESTful data integration, scoped CSS, and web component interoperability.
+PugPage is a command-line tool and runtime for developing, bundling, and serving Pug-based web applications. Pug templates compile to virtual DOM functions (snabbdom, inlined in the bundle) at build time. The runtime patches the DOM incrementally via `init/patch` instead of replacing `innerHTML`.
 
 ---
 
@@ -10,48 +10,36 @@ PugPage is a command-line tool and runtime for developing, bundling, and serving
 
 ### CLI Tool (`pugpage`)
 
-`pubpage` is a Deno script:
-- **init**: Initializes a new PugPage project with a recommended directory structure and sample files.
-- **dev**: Starts a development server with live reload, serving Pug files and assets.
-- **test**: Runs tests using Jest and jsdom.
-  - Watch for file changes, re-run test when file changes
-- **dist**: Builds the application for production, bundling Pug, JS, CSS, and assets.
+`pugpage` is a Deno script:
+- **init**: Initializes a new PugPage project with sample files.
+- **dev**: Starts a development server with SSE live reload.
+- **dist**: Builds for production with minification (Terser) and content-hash filenames.
 
-### Development Server
-* Development server provide the following url
-  * `/index.html`: provided by PugPage render
-    * `XXXXXX` is the hash of JS content
-  * `/pugpage.js`: See design of PugPage Render
-    * In addition, it receive Server Sent Event (SSE) to reload browser
-  * `/livereload`: Compile pug pages, and return Server Sent Event (SSE) when files change
-  * Other static asset
-  * Handles 404 to serve `/index.html`
+### Development Server (`src/dev.ts`)
+- `/index.html`: HTML shell that loads the bundle via `<script type="module" src="/dist.js">`
+- `/dist.js`: Combined compiler output + runtime. Recompiled on `.pug` file changes.
+- `/__livereload`: SSE endpoint. Pushes `"reload"` events to connected browsers.
+- Static assets served from the root directory.
+- 404 + `Accept: text/html` → serves `/index.html` (SPA fallback).
 
-### Dist Builder
-Dist builder outputs `index.html` and `dist.XXXXXX.js`.
-* `index.html`: load `dist.XXXXXX.js`. See design of PugPage render
-* `/dist.XXXXXX.js`: is bundle of `/pugpage.js`
-  * `XXXXXX` is hash of JS content
+### Dist Builder (`src/dist.ts`)
+- `dist.<hash>.js`: Minified bundle (compiler output + runtime). `<hash>` is SHA-256 of content.
+- `index.html`: Loads the hashed JS file.
+- `bundleJS()`: Concatenates `compileDirectory()` output + `src/render/render.js`.
 
-### PugPage Render
-* `index.html`: loads `pugpage.js` (or `/dist.XXXXXX.js`)
-* `pugpage.js`
-  * Import `pug_pages()` provided by Pugpage compiler. When called with pug file path, it returns the pugpage function. See PugPage compiler.
-  * Register HTML custom element `pug-page`, which
-    * Fetch restful JSON data defined by attribute `rest` from server
-    * Find PugPage function by calling `pug_pages()` with  attribute value `src`
-    * Render shadowRoot by calling PugPage function with restful data
-  * PugPage routing
-    * Parse target PugPage to load from url
-    * Load the PugPage
-      - Try different PugPage path as described by README.md
-    * Render PugPage with data:
-      * Global variables:
-        - `$user`: Injected empty object.
-        - `$page`: Page context (path, args, params).
+### PugPage Runtime (`src/render/render.js`)
+- Bundle provides: `__patch` (snabbdom patch), `pug_pages` (page registry), `h` (snabbdom h function), `pug_layout_map`, `pug_layout_chain`.
+- **Mount/Patch**: First render creates a container div and mounts into it. Subsequent renders diff + patch the existing vdom tree.
+- **pug-page custom element**: Fetches REST JSON data from `rest` attribute, resolves page function via `pug_pages(src)`, renders as vdom subtree. No Shadow DOM.
+- **Routing** (`onUrlChange`): Resolves pages using the URL fallback algorithm (exact → /show → segment peel). Injects `$user`, `$page`, applies layout composition via `composeWithLayout()`.
+- **Form handling**: Intercepts `submit` on `<form>`, posts JSON to `action`, redirects to `href` on success.
+- **Event listeners**: `popstate`, `pushstate`, `replacestate` (monkey-patched), `<a>` click interception, `document.body` submit listener.
 
-### PugPage Compiler
-- Each Pug file is compiled to a PugPage function
-  - When a tag has `$role` or `$lang` attributes, `if` directive is inserted to test the condition
-  - `layout.pug` files in current directory of file and parent directories are applied by inserting `Extends` and `Block`
-- All PugPage functions are combine into a single function `pug_pages()` in `compiled.pug.js`, when called with Pug file path, it returns the PugPage function
+### PugPage Compiler (`src/compiler.ts`)
+- **Pipeline** (`compileDirectory`): For each `.pug` file: read → apply layout/source transforms → lex (pug-lexer) → parse (pug-parser) → load (pug-load, resolves includes/extends) → link (pug-linker) → codegen.
+- **Codegen** (`src/compiler/codegen.ts`): Walks the linked pug AST and emits snabbdom `h()` calls. Handles 19 post-linkage node types: Block, Tag, Text, Code, Conditional, Each, EachOf, Case, When, While, Mixin, MixinBlock, YieldBlock, NamedBlock, Doctype, Comment, Literal, InterpolatedTag. Extends/Include/Filter are resolved by the pug pipeline before codegen.
+- **Source transforms** (`src/compiler/transforms.ts`): `$role` and `$lang` attributes are converted to conditional `if` directives before compilation.
+- **Layout auto-application** (`src/compiler/layouts.ts`): Finds nearest `layout.pug` in current/parent directories. Layouts use `slot` (handled at AST level in codegen as `__content`). Supports `extends NONE` to opt out and layout chaining (parent layouts).
+- **CSS scoping** (`src/compiler/css-scope.ts`): Extracts `<style>` content, prefixes selectors with `[data-scope="<hash>"]` based on file path.
+- **Bundle emission** (`bundleModules`): Inlines snabbdom source (~31KB) at build time (no runtime import). Emits: inlined snabbdom → `__patch = init([...])` → layout maps → scoped CSS → `pug_pages()` switch/case registry.
+- **Module stripping** (`stripModuleWrapper`): Removes `import`/`export` from individual page modules since `h` is a global provided by the inlined snabbdom.

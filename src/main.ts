@@ -12,13 +12,11 @@ function printHelp() {
 Usage:
   pugpage init
   pugpage dev [--root=.] [--port=8000]
-  pugpage test [--root=.]
   pugpage dist [--root=.] [--out=$root/dist]
 
 Commands:
   init    Initialize a new PugPage project
   dev     Start development server with live reload
-  test    Run tests (Jest + jsdom)
   dist    Build application for production
 `);
 }
@@ -43,11 +41,7 @@ if (import.meta.main) {
       await startDevServer({
         root: args.root,
         port: Number(args.port),
-      });
-      break;
-    case "test":
-      await runTests({
-        root: args.root,
+        watch: true,
       });
       break;
     case "dist":
