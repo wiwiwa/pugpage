@@ -50,24 +50,6 @@ function composeWithLayout(contentVnode, layoutPath) {
 var __pageFn = null;
 var __pageArgs = null;
 
-var __restData = {};
-var __restRendering = false;
-
-function __rerender(extraData) {
-  if (!__pageFn) return;
-  __restData = extraData;
-  var merged = Object.assign({}, __pageArgs, __restData);
-  __restRendering = true;
-  try {
-    var pageHtml = __pageFn(merged);
-    var targetLayout = __currentLayout;
-    var composedHtml = composeWithLayout(pageHtml, targetLayout);
-    renderPage(composedHtml);
-  } finally {
-    __restRendering = false;
-  }
-}
-
 function onUrlChange() {
   var url = new URL(window.location.href);
   var path = url.pathname;
@@ -160,7 +142,6 @@ class PugPageElement extends HTMLElement {
   connectedCallback() {
     if (this.parentNode === document.body && !__container) return;
     if (this._loaded) return;
-    if (__restRendering) return;
     this._loaded = true;
     this._load();
   }
@@ -176,7 +157,7 @@ class PugPageElement extends HTMLElement {
 
     if (rest) {
       try {
-        var res = await fetch(rest);
+        var res = await fetch(rest, { headers: { "Accept": "application/json" } });
         data = await res.json();
         data.$user = window.__pugpage_user;
         data.$page = window.__pugpage_page || {};
@@ -198,8 +179,18 @@ class PugPageElement extends HTMLElement {
           this._childVdom = __patch(mount, vnode);
         }
       }
-    } else if (rest) {
-      __rerender(data);
+    } else if (rest && this.__tpl) {
+      var tplResult;
+      try { tplResult = this.__tpl(data); } catch(e) { console.error("pug-page __tpl error:", e); return; }
+      var vnode = Array.isArray(tplResult) ? h("div", tplResult) : tplResult;
+      if (this._childVdom) {
+        this._childVdom = __patch(this._childVdom, vnode || h("div"));
+      } else {
+        this.innerHTML = "";
+        var mount = document.createElement("div");
+        this.appendChild(mount);
+        this._childVdom = __patch(mount, vnode || h("div"));
+      }
     }
   }
 }

@@ -13,7 +13,7 @@ Deno.test("compiler.compile", async () => {
   await expect(page.locator("body")).toContainText("Hello");
 
   await page.locator("a.showUser").click();
-  await expect(page.locator("body")).toContainText("Alice");
+  await expect(page.locator("pug-page")).toContainText("Alice");
   await expect(page.locator("h1")).toContainText("Home Layout");
   const styleText = await page.locator("style").evaluateAll((els) => els.map((e) => e.textContent).join(""));
   expect(styleText).toContain("list-style");

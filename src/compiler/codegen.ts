@@ -219,7 +219,11 @@ function generateTag(node: PugASTNode): string {
         attrEntries.push(`id: ${a.val}`);
       }
     } else {
-      attrEntries.push(`${a.name}: ${a.val}`);
+      if (isStaticString(a.val)) {
+        attrEntries.push(`${a.name}: ${a.val}`);
+      } else {
+        attrEntries.push(`${a.name}: __v(function(){ return ${a.val} })`);
+      }
     }
   }
 
@@ -240,6 +244,13 @@ function generateTag(node: PugASTNode): string {
       ? `return ${blockResult.exprs[0]};`
       : `return [${blockResult.exprs.join(", ")}];`;
     childrenExpr = `(function() { ${innerStmts} ${innerRet} })()`;
+  }
+
+  const hasRest = node.attrs?.some((a) => (a as { name: string }).name === "rest");
+  if (node.name === "pug-page" && hasRest && childrenExpr) {
+    dataParts.push(`__tpl: function(__d){with(__d){return ${childrenExpr}}}`);
+    dataParts.push(`hook: { create(_,vn){vn.elm.__tpl=vn.data.__tpl} }`);
+    childrenExpr = "";
   }
 
   const dataStr = dataParts.length > 0 ? `{ ${dataParts.join(", ")} }` : "";
