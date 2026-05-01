@@ -3,12 +3,20 @@ import { compileDirectory } from "./compiler.ts";
 import { indexHtml, readRenderJs } from "./dist.ts";
 
 let livereloadClients: Array<(msg: string) => void> = [];
-export async function startDevServer(opts: { root: string; port: number; watch?: boolean }) {
+export async function startDevServer(opts: {
+  root: string;
+  port: number;
+  watch?: boolean;
+  proxyTarget?: string;
+}) {
+  const proxyTarget = opts.proxyTarget ?? "http://localhost:8080";
   console.log(`Starting development server in ${opts.root} on port ${opts.port} ...`);
+  console.log(`API proxy → ${proxyTarget}`);
   const root = opts.root;
 
   const server = Deno.serve({ port: opts.port }, async (req: Request) => {
     const url = new URL(req.url);
+
     switch (url.pathname) {
       case "/":
         return indexResponse();
@@ -26,8 +34,13 @@ export async function startDevServer(opts: { root: string; port: number; watch?:
         return livereloadSSE();
     }
     const resp = await serveDir(req, { fsRoot: root });
-    if (resp.status === 404 && req.headers.get("accept")?.includes("text/html")) {
-      return indexResponse();
+    if (resp.status === 404) {
+      if (req.headers.get("accept")?.includes("text/html")) {
+        return indexResponse();
+      }
+      if (isJsonRequest(req)) {
+        return proxyRequest(req, proxyTarget);
+      }
     }
     return resp;
   });
@@ -67,6 +80,44 @@ async function watchAndReload(dir: string) {
         console.log(`Pug change detected: ${event.paths.join(", ")}`);
         for (const send of livereloadClients) send("reload");
     }
+  }
+}
+
+function isJsonRequest(req: Request): boolean {
+  const accept = req.headers.get("accept") ?? "";
+  if (accept.includes("application/json")) return true;
+  const contentType = req.headers.get("content-type") ?? "";
+  if (contentType.includes("application/json")) return true;
+  return false;
+}
+
+async function proxyRequest(req: Request, target: string): Promise<Response> {
+  const url = new URL(req.url);
+  const targetUrl = new URL(url.pathname + url.search, target);
+  const headers = new Headers(req.headers);
+  headers.set("Host", targetUrl.host);
+  headers.delete("accept-encoding");
+
+  try {
+    const resp = await fetch(targetUrl, {
+      method: req.method,
+      headers,
+      body: req.body,
+      redirect: "manual",
+    });
+    // Strip hop-by-hop headers that shouldn't be forwarded
+    const respHeaders = new Headers(resp.headers);
+    respHeaders.delete("transfer-encoding");
+    return new Response(resp.body, {
+      status: resp.status,
+      statusText: resp.statusText,
+      headers: respHeaders,
+    });
+  } catch (e) {
+    return new Response(JSON.stringify({ error: "Proxy error", message: (e as Error).message }), {
+      status: 502,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 }
 

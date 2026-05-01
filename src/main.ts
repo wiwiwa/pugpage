@@ -11,7 +11,7 @@ function printHelp() {
   console.log(`PugPage CLI
 Usage:
   pugpage init
-  pugpage dev [--root=.] [--port=8000]
+  pugpage dev [--root=.] [--port=8000] [--api=http://localhost:8080]
   pugpage dist [--root=.] [--out=$root/dist]
 
 Commands:
@@ -27,7 +27,7 @@ async function runTests(opts: { root: string } = { root: "." }) {
 
 if (import.meta.main) {
   const args = parseArgs(Deno.args,{
-    string: ["root", "out"],
+    string: ["root", "out", "api"],
     default: {
       root: ".",
       port: 8000,
@@ -42,6 +42,7 @@ if (import.meta.main) {
         root: args.root,
         port: Number(args.port),
         watch: true,
+        proxyTarget: args.api,
       });
       break;
     case "dist":
