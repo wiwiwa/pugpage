@@ -20,7 +20,7 @@ PugPage is a command-line tool for bundling and serving Pug files, enabling rapi
   - `$lang`: String or array. Renders tag only if `$user.lang` matches.
     - Example: `div($lang='CN')` renders only for users with language `CN`.
 - **Layout File `layout.pug`**
-  - When rendering a page, `layout.pug` in the current or parent directories is automatically applied. Tag `slot` is replaced by renderred content of sub-layout or final pag
+  - When rendering a page, `layout.pug` in the current or parent directories is automatically applied. Tag `slot` is replaced by rendered content of sub-layout or final page.
   - Use `extends my-layout` to specify a custom layout file (resolved relative to the page).
     - `extends NONE` disable layout auto-application.
 - **URL Handling**
@@ -32,6 +32,7 @@ PugPage is a command-line tool for bundling and serving Pug files, enabling rapi
       4. `/system/user/1.pug` (if found, `$page.args = ['edit']`)
       5. `/system/user.pug` (if found, `$page.args = ['1', 'edit']`)
       6. `/system.pug` (if found, `$page.args = ['user', '1', 'edit']`)
+      7. `/404.pug` (if found, `$page.args = ['system', 'user', '1', 'edit']`)
   - Clicking an `<a>` tag updates the URL.
   - Submitting a `<form>` expects a JSON response and updates the URL to the `href` attribute.
     - Example: `form(action='/api/user/1' href='/user/1')` posts to `/api/user/1` and redirects to `/user/1`.
@@ -45,20 +46,21 @@ PugPage is a command-line tool for bundling and serving Pug files, enabling rapi
 
 1. Install [Deno](https://docs.deno.com/runtime/getting_started/installation/)
 2. Install: `curl -sL https://raw.githubusercontent.com/wiwiwa/pugpage/master/pugpage.sh | sh`
-3. Initialize a project: `./pugpage init`
-4. Start the dev server: `./pugpage dev`
-  - The dev server watches `.pug` files for changes and reloads the browser automatically.
-5. Build for production: `./pugpage dist`
-6. Update to latest: `./pugpage update`
+3. Start the dev server: `./pugpage dev`
+   - The dev server watches `.pug` files for changes and reloads the browser automatically.
+   - Creates `index.html` in the project root if it doesn't exist.
+4. Build for production: `./pugpage dist`
+5. Update to latest: `./pugpage update`
 
 ## CLI Reference
 
 ```
-pugpage init                        Initialize a new project
-pugpage dev [--root=.] [--port=8000]  Start dev server with live reload
-pugpage dist [--root=.] [--out=$root/dist]  Build for production
-pugpage install                     Install pugpage to ./pugpage
-pugpage update                      Update pugpage to latest version
+pugpage dev [--root=.] [--port=8000] [--api=http://localhost:8080]
+                                      Start dev server with live reload and API proxy
+pugpage dist [--root=.] [--out=$root/dist]
+                                      Build for production
+pugpage install                       Install pugpage to ./pugpage
+pugpage update                        Update pugpage to latest version
 ```
 
 ## Example Directory Structure
@@ -66,6 +68,7 @@ pugpage update                      Update pugpage to latest version
 ```
 /project-root
   index.pug             # entry page
+  index.html            # HTML shell (auto-created by dev server)
   layout.pug            # default layout
   /system
     layout.pug          # layout for /system/*
@@ -88,8 +91,6 @@ $ deno test --allow-all
 # Start dev server against test pages
 $ deno run --allow-all ./src/main.ts dev --root ./test/pages
 
-# Build production output
-$ deno bundle --minify -o ./dist/render.min.js ./src/render/render.js
-$ git tag $NEW_VERSION
-$ git push --all
+# Release new version
+$ ./release.sh
 ```

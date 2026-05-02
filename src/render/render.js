@@ -90,6 +90,9 @@ function onUrlChange() {
 
   if (!pageFn) {
     pageFn = pug_pages("/404");
+    if (pageFn && !pageArgs.$args && segments.length > 0) {
+      pageArgs.$args = segments;
+    }
   }
   if (!pageFn) return console.info("No Pug page found for path:", path);
 
