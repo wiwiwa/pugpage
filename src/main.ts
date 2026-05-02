@@ -6,6 +6,7 @@ import { parseArgs } from "@std/cli";
 import { startDevServer } from "./dev.ts";
 import { buildDist } from "./dist.ts";
 import { initProject } from "./init.ts";
+import { installOrUpdate } from "./setup.ts";
 
 function printHelp() {
   console.log(`PugPage CLI
@@ -15,9 +16,11 @@ Usage:
   pugpage dist [--root=.] [--out=$root/dist]
 
 Commands:
-  init    Initialize a new PugPage project
-  dev     Start development server with live reload
-  dist    Build application for production
+  init     Initialize a new PugPage project
+  dev      Start development server with live reload
+  dist     Build application for production
+  install  Install pugpage to ./pugpage
+  update   Update pugpage to latest version
 `);
 }
 
@@ -50,6 +53,10 @@ if (import.meta.main) {
         root: args.root,
         out: args.out || args.root+"/dist",
       });
+      break;
+    case "install":
+    case "update":
+      await installOrUpdate(args._[0] as "install" | "update");
       break;
     default:
       printHelp();

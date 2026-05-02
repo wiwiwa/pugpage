@@ -44,14 +44,12 @@ PugPage is a command-line tool for bundling and serving Pug files, enabling rapi
 # Usage
 
 1. Install [Deno](https://docs.deno.com/runtime/getting_started/installation/)
-2. Install the `pugpage` binary:
-   ```
-   curl -sL https://raw.githubusercontent.com/wiwiwa/pugpage/master/install.sh | sh
-   ```
+2. Install: `curl -sL https://raw.githubusercontent.com/wiwiwa/pugpage/master/pugpage.sh | sh`
 3. Initialize a project: `./pugpage init`
 4. Start the dev server: `./pugpage dev`
   - The dev server watches `.pug` files for changes and reloads the browser automatically.
 5. Build for production: `./pugpage dist`
+6. Update to latest: `./pugpage update`
 
 ## CLI Reference
 
@@ -59,6 +57,8 @@ PugPage is a command-line tool for bundling and serving Pug files, enabling rapi
 pugpage init                        Initialize a new project
 pugpage dev [--root=.] [--port=8000]  Start dev server with live reload
 pugpage dist [--root=.] [--out=$root/dist]  Build for production
+pugpage install                     Install pugpage to ./pugpage
+pugpage update                      Update pugpage to latest version
 ```
 
 ## Example Directory Structure
