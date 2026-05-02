@@ -93,5 +93,11 @@ $ deno test --allow-all
 $ deno run --allow-all ./src/main.ts dev --root ./test/pages
 
 # Release new version
-$ ./release.sh
+$ deno bundle --minify -o ./release/render.min.js ./src/render/render.js
+$ git add release/render.min.js
+$ git commit --amend --no-edit
+# you can increase major, minor or path version
+$ git tag $NEW_VERSION
+# double confirm before push
+$ git push --tag $NEW_VERSION 
 ```

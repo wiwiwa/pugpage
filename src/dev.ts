@@ -63,7 +63,10 @@ export async function startDevServer(opts: {
     return resp;
   });
 
-  opts.watch && watchAndReload(opts.root);
+  if (opts.watch) {
+    watchAndReload(opts.root);
+    if (opts.staticDir) watchAndReload(opts.staticDir);
+  }
   return server;
 }
 
@@ -89,13 +92,11 @@ function livereloadSSE(): Response {
 async function watchAndReload(dir: string) {
   const watcher = Deno.watchFs(dir);
   for await (const event of watcher) {
-    const isPug = event.paths.some((p) => p.endsWith(".pug"));
-    if (!isPug) continue;
     switch (event.kind) {
       case "modify":
       case "create":
       case "remove":
-        console.log(`Pug change detected: ${event.paths.join(", ")}`);
+        console.log(`Change detected: ${event.paths.join(", ")}`);
         for (const send of livereloadClients) send("reload");
     }
   }
@@ -140,7 +141,9 @@ async function proxyRequest(req: Request, target: string): Promise<Response> {
 
 async function indexResponse(root: string) {
   const html = await Deno.readTextFile(`${root}/index.html`);
-  return new Response(html, {
+  const injected = html.replace("</head>",
+    `<script>new EventSource('/__livereload').addEventListener('message',function(e){if(e.data==='reload')location.reload()})</script></head>`);
+  return new Response(injected, {
     headers: { "Content-Type": "text/html" },
   });
 }
