@@ -19,10 +19,14 @@ export async function startDevServer(opts: {
   port: number;
   watch?: boolean;
   proxyTarget?: string;
+  staticDir?: string;
 }) {
   const proxyTarget = opts.proxyTarget ?? "http://localhost:8080";
   console.log(`Starting development server in ${opts.root} on port ${opts.port} ...`);
   console.log(`API proxy → ${proxyTarget}`);
+  if (opts.staticDir) {
+    console.log(`Static dir → ${opts.staticDir}`);
+  }
   const root = opts.root;
 
   await ensureIndexHtml(root);
@@ -49,14 +53,13 @@ export async function startDevServer(opts: {
         return livereloadSSE();
     }
     const resp = await serveDir(req, { fsRoot: root });
-    if (resp.status === 404 || resp.status === 405) {
-      if (req.headers.get("accept")?.includes("text/html")) {
-        return await indexResponse(root);
-      }
-      if (isJsonRequest(req)) {
-        return proxyRequest(req, proxyTarget);
-      }
+    if (resp.status !== 404) return resp;
+    if (opts.staticDir) {
+      const staticResp = await serveDir(req, { fsRoot: opts.staticDir });
+      if (staticResp.status !== 404) return staticResp;
     }
+    if (req.headers.get("accept")?.includes("text/html")) return await indexResponse(root);
+    if (isJsonRequest(req)) return proxyRequest(req, proxyTarget);
     return resp;
   });
 

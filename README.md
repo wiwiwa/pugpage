@@ -55,8 +55,9 @@ PugPage is a command-line tool for bundling and serving Pug files, enabling rapi
 ## CLI Reference
 
 ```
-pugpage dev [--root=.] [--port=8000] [--api=http://localhost:8080]
+pugpage dev [--root=.] [--port=8000] [--api=http://localhost:8080] [--static=./assets]
                                       Start dev server with live reload and API proxy
+                                      --static: additional directory to serve static files from
 pugpage dist [--root=.] [--out=$root/dist]
                                       Build for production
 pugpage install                       Install pugpage to ./pugpage

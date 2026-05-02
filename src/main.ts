@@ -10,7 +10,7 @@ import { installOrUpdate } from "./setup.ts";
 function printHelp() {
   console.log(`PugPage CLI
 Usage:
-  pugpage dev [--root=.] [--port=8000] [--api=http://localhost:8080]
+  pugpage dev [--root=.] [--port=8000] [--api=http://localhost:8080] [--static=./assets]
   pugpage dist [--root=.] [--out=$root/dist]
 
 Commands:
@@ -23,7 +23,7 @@ Commands:
 
 if (import.meta.main) {
   const args = parseArgs(Deno.args,{
-    string: ["root", "out", "api"],
+    string: ["root", "out", "api", "static"],
     default: {
       root: ".",
       port: 8000,
@@ -36,6 +36,7 @@ if (import.meta.main) {
         port: Number(args.port),
         watch: true,
         proxyTarget: args.api,
+        staticDir: args.static,
       });
       break;
     case "dist":
