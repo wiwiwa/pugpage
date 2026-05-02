@@ -1,8 +1,19 @@
 import { serveDir } from "@std/http/file-server";
 import { compileDirectory } from "./compiler.ts";
-import { indexHtml, readRenderJs } from "./dist.ts";
+import { ensureIndexHtml } from "./dist.ts";
 
 let livereloadClients: Array<(msg: string) => void> = [];
+
+async function readRenderJs(): Promise<string> {
+  const url = new URL("./render/render.js", import.meta.url);
+  if (url.protocol === "file:") {
+    return Deno.readTextFileSync(url);
+  }
+  const resp = await fetch(url);
+  if (!resp.ok) throw new Error(`Failed to fetch render.js: ${resp.status}`);
+  return resp.text();
+}
+
 export async function startDevServer(opts: {
   root: string;
   port: number;
@@ -14,29 +25,33 @@ export async function startDevServer(opts: {
   console.log(`API proxy → ${proxyTarget}`);
   const root = opts.root;
 
+  await ensureIndexHtml(root);
+
   const server = Deno.serve({ port: opts.port }, async (req: Request) => {
     const url = new URL(req.url);
 
     switch (url.pathname) {
       case "/":
-        return indexResponse();
+        return await indexResponse(root);
       case "/dist.js": {
-        const js = await compileDirectory(root);
+        const js = await compileDirectory(root, { renderUrl: "/render.js" });
         return new Response(js, {
           headers: { "Content-Type": "application/javascript" },
         });
       }
-      case "/render.js":
-        return new Response(readRenderJs(), {
+      case "/render.js": {
+        const js = await readRenderJs();
+        return new Response(js, {
           headers: { "Content-Type": "application/javascript" },
         });
+      }
       case "/__livereload":
         return livereloadSSE();
     }
     const resp = await serveDir(req, { fsRoot: root });
-    if (resp.status === 404) {
+    if (resp.status === 404 || resp.status === 405) {
       if (req.headers.get("accept")?.includes("text/html")) {
-        return indexResponse();
+        return await indexResponse(root);
       }
       if (isJsonRequest(req)) {
         return proxyRequest(req, proxyTarget);
@@ -105,7 +120,6 @@ async function proxyRequest(req: Request, target: string): Promise<Response> {
       body: req.body,
       redirect: "manual",
     });
-    // Strip hop-by-hop headers that shouldn't be forwarded
     const respHeaders = new Headers(resp.headers);
     respHeaders.delete("transfer-encoding");
     return new Response(resp.body, {
@@ -121,8 +135,9 @@ async function proxyRequest(req: Request, target: string): Promise<Response> {
   }
 }
 
-function indexResponse() {
-  return new Response(indexHtml("/dist.js"), {
+async function indexResponse(root: string) {
+  const html = await Deno.readTextFile(`${root}/index.html`);
+  return new Response(html, {
     headers: { "Content-Type": "text/html" },
   });
 }

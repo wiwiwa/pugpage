@@ -2,7 +2,9 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>PugPage Dev Server</title>
+  <base href="/">
   <script type="module" src="/dist.js"></script>
   <script>
     const es = new EventSource('/__livereload');
@@ -10,5 +12,5 @@
   </script>
 </head>
 <body>
-</body>
+  <pug-page src="/index" />
 </html>

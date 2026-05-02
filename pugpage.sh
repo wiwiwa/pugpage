@@ -12,7 +12,7 @@ if [ $# -eq 0 ] && ! [ -t 0 ]; then
   set -- install
 fi
 
-exec PUGPAGE_SELF="$0" deno run \
+PUGPAGE_SELF="$0" exec deno run \
   --import-map "${BASE}/deno.json" \
   --allow-read --allow-write --allow-net --allow-env --allow-sys \
   "${BASE}/src/main.ts" \

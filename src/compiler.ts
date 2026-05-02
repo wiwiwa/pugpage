@@ -20,10 +20,9 @@ import pugParse from "npm:pug-parser";
  */
 export async function compileDirectory(
   dirPath: string,
-  opts?: { baseDir?: string; renderUrl?: string },
+  opts: { baseDir?: string; renderUrl: string },
 ): Promise<string> {
   const base = Deno.realPathSync(opts?.baseDir || dirPath);
-  const renderUrl = opts?.renderUrl || "./render.js";
   const layouts = await findLayouts(dirPath);
 
   const modules: { path: string; code: string }[] = [];
@@ -60,7 +59,7 @@ export async function compileDirectory(
     }
   }
 
-  return bundleModules(modules, layoutMap, layoutChain, scopeStyles, renderUrl);
+  return bundleModules(modules, layoutMap, layoutChain, scopeStyles, opts.renderUrl);
 }
 
 interface ModuleCompileResult {

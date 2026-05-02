@@ -1,31 +1,24 @@
 /**
  * PugPage CLI Tool
- * Commands: init, dev, test, dist
+ * Commands: dev, dist, install, update
  */
 import { parseArgs } from "@std/cli";
 import { startDevServer } from "./dev.ts";
 import { buildDist } from "./dist.ts";
-import { initProject } from "./init.ts";
 import { installOrUpdate } from "./setup.ts";
 
 function printHelp() {
   console.log(`PugPage CLI
 Usage:
-  pugpage init
   pugpage dev [--root=.] [--port=8000] [--api=http://localhost:8080]
   pugpage dist [--root=.] [--out=$root/dist]
 
 Commands:
-  init     Initialize a new PugPage project
   dev      Start development server with live reload
   dist     Build application for production
   install  Install pugpage to ./pugpage
   update   Update pugpage to latest version
 `);
-}
-
-async function runTests(opts: { root: string } = { root: "." }) {
-  console.error(`Not implemented yet: test`);
 }
 
 if (import.meta.main) {
@@ -37,9 +30,6 @@ if (import.meta.main) {
     },
   });
   switch (args._[0]) {
-    case "init":
-      await initProject();
-      break;
     case "dev":
       await startDevServer({
         root: args.root,

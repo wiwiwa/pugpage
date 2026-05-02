@@ -1,8 +1,4 @@
 {
-  "name": "@wiwiwa/pugpage",
-  "version": "0.1.0",
-  "license": "MIT",
-  "exports": "./src/main.ts",
   "imports": {
     "@playwright/test": "npm:@playwright/test@^1.59.1",
     "@std/cli": "jsr:@std/cli@^1.0",
