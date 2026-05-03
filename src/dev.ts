@@ -53,10 +53,10 @@ export async function startDevServer(opts: {
         return livereloadSSE();
     }
     const resp = await serveDir(req, { fsRoot: root });
-    if (resp.status !== 404) return resp;
+    if (resp.status !== 404 && resp.status !== 405) return resp;
     if (opts.staticDir) {
       const staticResp = await serveDir(req, { fsRoot: opts.staticDir });
-      if (staticResp.status !== 404) return staticResp;
+      if (staticResp.status !== 404 && staticResp.status !== 405) return staticResp;
     }
     if (req.headers.get("accept")?.includes("text/html")) return await indexResponse(root);
     if (isJsonRequest(req)) return proxyRequest(req, proxyTarget);
