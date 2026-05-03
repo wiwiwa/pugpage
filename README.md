@@ -91,13 +91,11 @@ $ deno test --allow-all
 
 # Start dev server against test pages
 $ deno run --allow-all ./src/main.ts dev --root ./test/pages
-
-# Release new version
-$ deno bundle --minify -o ./release/render.min.js ./src/render/render.js
-$ git add release/render.min.js
-$ git commit --amend --no-edit
-# you can increase major, minor or path version
-$ git tag $NEW_VERSION
-# double confirm before push
-$ git push --tag $NEW_VERSION 
 ```
+
+### Release new version
+- build minified version by
+  `deno bundle --minify -o ./release/render.min.js ./src/render/render.js`
+- add built render.min.js to git by amending last commit
+- tag new version by increase major, minor or patch version
+- push after double confirm

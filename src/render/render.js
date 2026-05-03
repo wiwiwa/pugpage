@@ -238,6 +238,7 @@ function __boot() {
   document.body.addEventListener("submit", async function (event) {
     var form = event.target;
     if (form.tagName !== "FORM") return;
+    if (!form.hasAttribute("href")) return;
 
     event.preventDefault();
 
@@ -251,11 +252,24 @@ function __boot() {
     }
 
     try {
-      var response = await fetch(action, {
-        method: form.method || "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      });
+      var method = (form.method || "POST").toUpperCase();
+      var fetchOpts = { method: method, headers: { "Accept": "application/json" } };
+      var fetchUrl = action;
+
+      if (method === "GET") {
+        var qs = new URLSearchParams(data).toString();
+        if (qs) fetchUrl = action + "?" + qs;
+      } else {
+        var enctype = form.enctype || "application/x-www-form-urlencoded";
+        if (enctype === "multipart/form-data") {
+          fetchOpts.body = formData;
+        } else {
+          fetchOpts.headers["Content-Type"] = "application/json";
+          fetchOpts.body = JSON.stringify(data);
+        }
+      }
+
+      var response = await fetch(fetchUrl, fetchOpts);
 
       if (response.ok && href) {
         history.pushState(null, "", href);
