@@ -50,6 +50,20 @@ function composeWithLayout(contentVnode, layoutPath) {
 var __pageFn = null;
 var __pageArgs = null;
 
+function navigateToUrl(url) {
+  var targetUrl = new URL(url, window.location.href);
+  if (targetUrl.origin !== window.location.origin) {
+    window.location.assign(targetUrl.href);
+    return;
+  }
+
+  history.pushState(null, "", targetUrl.href);
+}
+
+window.navigateTo = function (url) {
+  navigateToUrl(url);
+};
+
 function onUrlChange() {
   var url = new URL(window.location.href);
   var path = url.pathname;
@@ -231,7 +245,7 @@ function __boot() {
       target.origin === window.location.origin
     ) {
       event.preventDefault();
-      history.pushState(null, "", target.href);
+      navigateToUrl(target.href);
     }
   });
 
