@@ -1,10 +1,11 @@
-h2 User Details
-
 pug-page(rest=`/$$dev/api/user/${$args[0]}`)
-  li User ID: #{id}
-  li User Name: #{name}
-  li User Email: #{email}
+  .sass-card
+    h2.sass-title User Details
+    li User ID: #{id}
+    li User Name: #{name}
+    li User Email: #{email}
 
-style.
-  li { list-style-type:square; }
-  
+:sass
+  .sass-card
+    .sass-title
+      color: rgb(134, 0, 0)

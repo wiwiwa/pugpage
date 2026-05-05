@@ -31,7 +31,16 @@ The browser runtime exposes:
 - Codegen compiles form children into `__tpl` functions (same as `pug-page`)
 
 
-Compiler behavior belongs in `src/compiler.ts` and `src/compiler/`. Browser behavior belongs in `src/render/render.js`; update `release/render.min.js` only when runtime code changes. Scoped CSS is compiled server-side before the browser runtime loads.
+Compiler and runtime ownership:
+  - Compiler behavior belongs in `src/compiler.ts` and `src/compiler/`
+  - Browser behavior belongs in `src/render/render.js`; update `release/render.min.js` only when runtime code changes
+  - Do not regenerate `release/render.min.js` for compiler-only changes
+Inline styles:
+  - `style.`, `:scss`, `:sass` are emitted as inline VDOM `h("style", ...)` at their original template position
+  - No bundle-level `document.head` injection — styles live inside the rendered page subtree
+  - Each inline style gets a stable `key` and `data-pugpage-style` attribute for snabbdom patch identity
+  - Duplicate identical blocks are not deduplicated — each can be removed independently by VDOM updates
+  - Sass/SCSS support is compiler-only: `:scss` and `:sass` filters are compiled in `src/compiler/codegen.ts`
 
 ## Coding Style & Naming Conventions
 
@@ -47,7 +56,7 @@ Recent commits use scoped, imperative messages such as `dev: fix: auto-inject li
 
 Pull requests should include a short description, the commands run, and any relevant fixture or screenshot notes for browser-visible changes. Link related issues when available and call out release artifact updates to `release/render.min.js`.
 
-## Release
+## Release Procedure
 
 1. Build minified runtime: `deno bundle --minify -o ./release/render.min.js ./src/render/render.js`
 2. Add built `render.min.js` to git by amending last commit

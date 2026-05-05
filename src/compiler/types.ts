@@ -17,7 +17,8 @@ export type PugNodeType =
   | "Mixin"
   | "MixinBlock"
   | "YieldBlock"
-  | "Literal";
+  | "Literal"
+  | "Filter";
 
 export interface PugASTAttribute {
   name: string;

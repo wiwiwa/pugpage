@@ -49,7 +49,8 @@ PugPage is a command-line tool for bundling and serving Pug files, enabling rapi
 - **Web Component Support**
   - Third-party web components work in pug templates. Unknown tags pass through to the DOM as-is.
 - **Scoped CSS**
-  - By default, `style` elements are scoped to their parent template.
+  - By default, `style.`, `:scss`, and `:sass` blocks are scoped to their parent template.
+  - To emit global CSS, use `style(scoped=false).`, `:scss(scoped=false)`, or `:sass(scoped=false)`.
 
 # Usage
 

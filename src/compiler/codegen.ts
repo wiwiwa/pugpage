@@ -6,11 +6,17 @@
  */
 
 import type { PugASTNode } from "./types.ts";
+import { scopeCss, hashString } from "./css-scope.ts";
+import * as sass from "sass";
 
-let __extractedStyles: string[] = [];
+let __urlPath = "";
+let __styleIndex = 0;
+let __hasScopedStyles = false;
 
-export function generateCode(ast: PugASTNode): { code: string; styles: string[] } {
-  __extractedStyles = [];
+export function generateCode(ast: PugASTNode, urlPath: string): { code: string; hasScopedStyles: boolean } {
+  __urlPath = urlPath;
+  __styleIndex = 0;
+  __hasScopedStyles = false;
   const { exprs, stmts } = generateBlock(ast);
 
   const preamble = stmts.length > 0 ? stmts.join(";\n") + ";\n" : "";
@@ -21,13 +27,12 @@ export function generateCode(ast: PugASTNode): { code: string; styles: string[] 
   } else if (exprs.length === 1) {
     returnExpr = `return ${exprs[0]};`;
   } else {
-    returnExpr = `return h("div", [\n  ${exprs.join(",\n  ")}\n]);`;
+    returnExpr = `return h("div", [\n  ${exprs.join(",\n")}\n]);`;
   }
 
   const code = preamble + returnExpr;
-  return { code, styles: __extractedStyles };
+  return { code, hasScopedStyles: __hasScopedStyles };
 }
-
 interface BlockResult {
   exprs: string[];
   stmts: string[];
@@ -52,12 +57,42 @@ function isBlockEmpty(block: PugASTNode | undefined): boolean {
   return !block || !block.nodes || block.nodes.length === 0;
 }
 
-function extractStyleCss(node: PugASTNode): string {
+function extractTextBlock(node: PugASTNode): string {
   if (!node.block?.nodes) return "";
   return node.block.nodes
     .filter((n) => n.type === "Text")
     .map((n) => n.val ?? "")
     .join("");
+}
+
+function isScopedStyle(node: PugASTNode): boolean {
+  const scopedAttr = node.attrs?.find((attr) => attr.name === "scoped");
+  if (!scopedAttr) return true;
+  return scopedAttr.val !== "false";
+}
+
+function compileStyleFilter(node: PugASTNode): string {
+  const source = extractTextBlock(node);
+  if (!source.trim()) return "";
+  const syntax = node.name === "sass" ? "indented" : "scss";
+  try {
+    return sass.compileString(source, {
+      syntax,
+      url: node.filename ? new URL(`file://${node.filename}`) : undefined,
+    }).css;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const filename = node.filename ? ` in ${node.filename}` : "";
+    throw new Error(`Failed to compile :${node.name}${filename}: ${message}`);
+  }
+}
+
+function makeStyleExpr(css: string, scoped: boolean): string {
+  const idx = __styleIndex++;
+  if (scoped) __hasScopedStyles = true;
+  const input = scoped ? scopeCss(css, __urlPath).css : css;
+  const styleId = hashString(__urlPath + ":" + idx + ":" + (scoped ? "s" : "g") + ":" + input);
+  return `h("style", { key: "${styleId}", attrs: { "data-pugpage-style": "${styleId}" } }, ${JSON.stringify(input)})`;
 }
 
 function generateBlock(node: PugASTNode): BlockResult {
@@ -95,8 +130,8 @@ function generateBlock(node: PugASTNode): BlockResult {
       case "Tag": {
         flushInline();
         if (child.name === "style") {
-          const css = extractStyleCss(child);
-          if (css) __extractedStyles.push(css);
+          const css = extractTextBlock(child);
+          if (css) exprs.push(makeStyleExpr(css, isScopedStyle(child)));
         } else if (child.name === "slot" && !(child.attrs?.length) && isBlockEmpty(child.block)) {
           exprs.push("__content");
         } else {
@@ -160,6 +195,14 @@ function generateBlock(node: PugASTNode): BlockResult {
       }
       case "Doctype": {
         flushInline();
+        break;
+      }
+      case "Filter": {
+        flushInline();
+        if (child.name === "scss" || child.name === "sass") {
+          const css = compileStyleFilter(child);
+          if (css) exprs.push(makeStyleExpr(css, isScopedStyle(child)));
+        }
         break;
       }
       case "Literal": {

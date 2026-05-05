@@ -12,6 +12,7 @@
     "@std/path": "jsr:@std/path@^1.1.4",
     "playwright": "npm:playwright@^1.59.1",
     "pug": "npm:pug@^3",
+    "sass": "npm:sass@^1",
     "terser": "npm:terser@^5.43.1",
     "snabbdom": "npm:snabbdom@^3"
   }

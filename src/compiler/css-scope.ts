@@ -14,7 +14,7 @@ export interface ScopeResult {
 /**
  * Generate a short hash from a string for use as scope ID.
  */
-function hashString(s: string): string {
+export function hashString(s: string): string {
   let hash = 0;
   for (let i = 0; i < s.length; i++) {
     const ch = s.charCodeAt(i);

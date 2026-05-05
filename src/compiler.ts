@@ -1,7 +1,7 @@
 import { walk } from "@std/fs/walk";
 import { generateCode } from "./compiler/codegen.ts";
 import { findLayouts, resolveLayout, resolveExtendsLayout, toUrlPath, isLayoutFile } from "./compiler/layouts.ts";
-import { scopeCss } from "./compiler/css-scope.ts";
+import { hashString } from "./compiler/css-scope.ts";
 
 import pugLoad from "npm:pug-load";
 import pugLink from "npm:pug-linker";
@@ -15,8 +15,7 @@ import pugParse from "npm:pug-parser";
  * Pipeline:
  *   1. Walk to find layout.pug files, build layout map
  *   2. For each .pug: read → layout transforms → lex → parse → load → link → codegen
- *   3. CSS scoping for pages with <style> elements
- *   4. Emit bundle with pug_pages() registry + pug_layout_map + pug_layout_chain
+ *   3. Emit bundle with pug_pages() registry + pug_layout_map + pug_layout_chain
  */
 export async function compileDirectory(
   dirPath: string,
@@ -28,7 +27,6 @@ export async function compileDirectory(
   const modules: { path: string; code: string }[] = [];
   const layoutMap: Record<string, string | null> = {};
   const layoutChain: Record<string, string | null> = {};
-  const scopeStyles: { scopeId: string; css: string }[] = [];
 
   for await (const entry of walk(dirPath, { exts: ["pug"] })) {
     if (entry.isDirectory) continue;
@@ -37,12 +35,8 @@ export async function compileDirectory(
     const urlPath = toUrlPath(absPath, base);
 
     const source = await Deno.readTextFile(absPath);
-    const { code, scopeId, scopedCss, extendsPath } = compileModule(source, absPath, base);
+    const { code, extendsPath } = compileModule(source, absPath, base);
     modules.push({ path: urlPath, code });
-
-    if (scopedCss) {
-      scopeStyles.push({ scopeId, css: scopedCss });
-    }
 
     const resolvedLayout = extendsPath === "NONE"
       ? null
@@ -59,13 +53,11 @@ export async function compileDirectory(
     }
   }
 
-  return bundleModules(modules, layoutMap, layoutChain, scopeStyles, opts.renderUrl);
+  return bundleModules(modules, layoutMap, layoutChain, opts.renderUrl);
 }
 
 interface ModuleCompileResult {
   code: string;
-  scopeId: string;
-  scopedCss: string;
   extendsPath: string | null;
 }
 
@@ -103,32 +95,27 @@ function compileModule(
   });
   const ast = pugLink(loaded);
   const urlPath = absPath.slice(base.length, -4);
-  const { code, styles } = generateCode(ast);
+  const { code, hasScopedStyles } = generateCode(ast, urlPath);
+  const scopeId = hasScopedStyles ? hashString(urlPath) : undefined;
 
-  let scopeId = "";
-  let scopedCss = "";
-  if (styles.length > 0) {
-    const css = styles.join("\n");
-    const scoped = scopeCss(css, urlPath);
-    scopeId = scoped.scopeId;
-    scopedCss = scoped.css;
+  if (scopeId) {
+    return { code: wrapWithScope(code, scopeId), extendsPath };
   }
+  return { code, extendsPath };
+}
 
-  return { code, scopeId, scopedCss, extendsPath };
+function wrapWithScope(code: string, scopeId: string): string {
+  const id = JSON.stringify(scopeId);
+  const inject = `(function(__r){if(__r&&typeof __r==="object"){if(!__r.data)__r.data={};if(!__r.data.attrs)__r.data.attrs={};__r.data.attrs["data-scope"]=${id}}return __r})`;
+  return code.replace("return ", `return ${inject}(`).slice(0, -1) + ");";
 }
 
 function bundleModules(
   modules: { path: string; code: string }[],
   layoutMap: Record<string, string | null>,
   layoutChain: Record<string, string | null>,
-  scopeStyles: { scopeId: string; css: string }[],
   renderUrl: string,
 ): string {
-  const scopedCss = scopeStyles
-    .filter((s) => s.css && s.css !== s.scopeId)
-    .map((s) => `(function(){ var s=document.createElement("style"); s.textContent=${JSON.stringify(s.css)}; document.head.appendChild(s); })();`)
-    .join("\n");
-
   const cases = modules.map((mod) => {
     const fnBody = JSON.stringify(`with(data) {\n${mod.code}\n}`);
     return `    case '${mod.path}': {
@@ -139,8 +126,6 @@ function bundleModules(
 
   return `const pug_layout_map = ${JSON.stringify(layoutMap)};
 const pug_layout_chain = ${JSON.stringify(layoutChain)};
-
-${scopedCss}
 
 function __s(v) { return v == null ? '' : String(v); }
 function __v(fn) { try { return fn(); } catch(e) { if (e instanceof ReferenceError) console.warn('PugPage:', e.message); return ''; } }

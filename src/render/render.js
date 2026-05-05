@@ -115,14 +115,24 @@ async function fetchIntoScope(restUrl, scopeTracker, fetchOpts) {
   try {
     res = await fetch(url.href, opts);
   } catch (e) {
-    scopeTracker.scope.$rest = { status: 0, data: { error: e.message } };
+    scopeTracker.scope.$rest = { status: 0, data: { error: e.message }, loading: false, headers: {} };
     return null;
   }
 
   var data = null;
   try { data = await res.json(); } catch (e) { /* non-JSON response */ }
 
-  scopeTracker.scope.$rest = { status: res.status, data: data };
+  var h = res.headers;
+  scopeTracker.scope.$rest = {
+    status: res.status,
+    data: data,
+    loading: false,
+    get headers() {
+      var obj = {};
+      h.forEach(function(v, k) { obj[k] = v; });
+      return obj;
+    }
+  };
   if (res.ok && data) {
     for (var key in data) {
       if (!__RESERVED_KEYS[key]) scopeTracker.scope[key] = data[key];
@@ -134,7 +144,7 @@ async function fetchIntoScope(restUrl, scopeTracker, fetchOpts) {
 
 function __initFormScope(form) {
   var rest = form.getAttribute("rest");
-  form.__scope = createScope({ $user: window.$user, $page: window.__pugpage_page || {}, $rest: null });
+  form.__scope = createScope({ $user: window.$user, $page: window.__pugpage_page || {}, $rest: { status: null, data: null } });
 
   if (form.__tpl) renderScope(form, form.__tpl, form.__scope);
 
@@ -305,7 +315,7 @@ class PugPageElement extends HTMLElement {
   async _load() {
     var src = this.getAttribute("src");
     var rest = this.getAttribute("rest");
-    this.__scope = createScope({ $user: window.$user, $page: window.__pugpage_page || {} });
+    this.__scope = createScope({ $user: window.$user, $page: window.__pugpage_page || {}, $rest: { status: null, data: null, loading: true, headers: {} } });
 
     if (this.__tpl) renderScope(this, this.__tpl, this.__scope);
 
