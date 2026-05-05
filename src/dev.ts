@@ -34,6 +34,9 @@ export async function startDevServer(opts: {
   const server = Deno.serve({ port: opts.port }, async (req: Request) => {
     const url = new URL(req.url);
 
+    if (req.headers.get("upgrade")?.toLowerCase() === "websocket")
+      return proxyWebSocket(req, proxyTarget);
+
     switch (url.pathname) {
       case "/":
         return await indexResponse(root);
@@ -108,6 +111,65 @@ function isJsonRequest(req: Request): boolean {
   const contentType = req.headers.get("content-type") ?? "";
   if (contentType.includes("application/json")) return true;
   return false;
+}
+
+function toWebSocketTarget(reqUrl: URL, target: string): URL {
+  const proxyUrl = new URL(reqUrl.pathname + reqUrl.search, target);
+  proxyUrl.protocol = proxyUrl.protocol === "https:" ? "wss:" : "ws:";
+  return proxyUrl;
+}
+
+function closeSocket(socket: WebSocket, code?: number, reason?: string) {
+  if (socket.readyState !== WebSocket.OPEN && socket.readyState !== WebSocket.CONNECTING) return;
+  if (code === 1000 || (code !== undefined && code >= 3000 && code <= 4999)) {
+    socket.close(code, reason);
+    return;
+  }
+  socket.close();
+}
+
+function proxyWebSocket(req: Request, target: string): Response {
+  const backendUrl = toWebSocketTarget(new URL(req.url), target);
+  const { socket: clientWs, response } = Deno.upgradeWebSocket(req);
+  const backendWs = new WebSocket(backendUrl);
+  const pendingMessages: Array<string | ArrayBufferLike | Blob | ArrayBufferView> = [];
+  let backendOpen = false;
+
+  clientWs.addEventListener("message", (event) => {
+    if (!backendOpen) {
+      pendingMessages.push(event.data);
+      return;
+    }
+    backendWs.send(event.data);
+  });
+
+  backendWs.addEventListener("open", () => {
+    backendOpen = true;
+    for (const message of pendingMessages) {
+      backendWs.send(message);
+    }
+    pendingMessages.length = 0;
+  });
+
+  backendWs.addEventListener("message", (event) => {
+    clientWs.send(event.data);
+  });
+
+  backendWs.addEventListener("close", (event) => {
+    closeSocket(clientWs, event.code, event.reason);
+  });
+  clientWs.addEventListener("close", (event) => {
+    closeSocket(backendWs, event.code, event.reason);
+  });
+
+  backendWs.addEventListener("error", () => {
+    closeSocket(clientWs, 1011, "WebSocket proxy backend error");
+  });
+  clientWs.addEventListener("error", () => {
+    closeSocket(backendWs, 1011, "WebSocket proxy client error");
+  });
+
+  return response;
 }
 
 async function proxyRequest(req: Request, target: string): Promise<Response> {
