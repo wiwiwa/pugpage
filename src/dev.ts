@@ -40,20 +40,26 @@ export async function startDevServer(opts: {
     switch (url.pathname) {
       case "/":
         return await indexResponse(root);
-      case "/dist.js": {
-        const js = await compileDirectory(root, { renderUrl: "/render.js" });
+      case "/$$dev/dist.js": {
+        const js = await compileDirectory(root, { renderUrl: "/$$dev/render.js" });
         return new Response(js, {
           headers: { "Content-Type": "application/javascript" },
         });
       }
-      case "/render.js": {
+      case "/$$dev/render.js": {
         const js = await readRenderJs();
         return new Response(js, {
           headers: { "Content-Type": "application/javascript" },
         });
       }
-      case "/__livereload":
+      case "/$$dev/__livereload":
         return livereloadSSE();
+      case "/$$dev/api/login":
+        if (req.method === "POST") return handleDemoLoginPost(req);
+        return handleDemoLoginGet(req);
+      case "/$$dev/api/user/1000":
+        if (req.method === "GET") return handleDemoUserGet(req);
+        return Response.json({ error: "Method not allowed" }, { status: 405 });
     }
     const resp = await serveDir(req, { fsRoot: root });
     if (resp.status !== 404 && resp.status !== 405) return resp;
@@ -203,9 +209,41 @@ async function proxyRequest(req: Request, target: string): Promise<Response> {
 
 async function indexResponse(root: string) {
   const html = await Deno.readTextFile(`${root}/index.html`);
-  const injected = html.replace("</head>",
-    `<script>new EventSource('/__livereload').addEventListener('message',function(e){if(e.data==='reload')location.reload()})</script></head>`);
+  const devHtml = html
+    .replaceAll('src="/dist.js"', () => 'src="/$$dev/dist.js"')
+    .replaceAll('src="dist.js"', () => 'src="/$$dev/dist.js"');
+  const injected = devHtml.replace("</head>", () =>
+    `<script>new EventSource('/$$dev/__livereload').addEventListener('message',function(e){if(e.data==='reload')location.reload()})</script></head>`);
   return new Response(injected, {
     headers: { "Content-Type": "text/html" },
   });
+}
+
+function handleDemoLoginGet(req: Request): Response {
+  const auth = req.headers.get("authorization");
+  if (auth === "Bearer demo-token") {
+    return Response.json({ name: "demo", roles: ["user"] });
+  }
+  return Response.json({ error: "Unauthorized" }, { status: 401 });
+}
+
+function handleDemoUserGet(req: Request): Response {
+  const auth = req.headers.get("authorization");
+  if (auth === "Bearer demo-token") {
+    return Response.json({ id: 1000, name: "demo", roles: ["user"] });
+  }
+  return Response.json({ error: "Unauthorized" }, { status: 401 });
+}
+
+async function handleDemoLoginPost(req: Request): Promise<Response> {
+  let body: { username?: string; password?: string };
+  try {
+    body = await req.json();
+  } catch {
+    return Response.json({ error: "Invalid JSON" }, { status: 400 });
+  }
+  if (body.username === "demo" && body.password === "demo") {
+    return Response.json({ name: "demo", roles: ["user"], token: "demo-token" });
+  }
+  return Response.json({ error: "Invalid credentials" }, { status: 401 });
 }

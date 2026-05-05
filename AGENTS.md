@@ -13,6 +13,26 @@ PugPage is a Deno-based CLI and browser runtime for serving and bundling Pug pag
 
 Use Deno imports from `deno.json`; avoid adding npm scripts unless the project intentionally changes tooling.
 
+## Architecture
+
+The browser runtime exposes:
+- `window.$user` — public auth API with fields (`name`, `roles`, `lang`, `loginUrl`), `setAuthHeader(value, persistent)`, and `logout()`
+- Reactive scope — shared by `<pug-page>` and `<form>`:
+  - Proxy-based object with dirty-bit tracking; scope changes trigger VDOM re-render
+  - Each element has its own isolated scope (`$rest`, `$user`, `$page` + fetched data)
+  - `$rest` is `null` initially, set to `{ status, data }` after fetch
+  - On 200: response data also merges into scope; on non-200: only `$rest` available
+- `<pug-page rest=...>` — fetches data on connect, re-renders children with scope
+- `<form>` — two modes:
+  - `rest="..."` — fetches initial data on connect, re-renders children
+  - `action="..." href="..."` — submit → fetch → re-render → navigate to `href`
+  - Both can coexist: `rest` for initial load, `action` for submit
+- Templates handle success/error via `- if($rest)` — no inline `<script>` needed
+- Codegen compiles form children into `__tpl` functions (same as `pug-page`)
+
+
+Compiler behavior belongs in `src/compiler.ts` and `src/compiler/`. Browser behavior belongs in `src/render/render.js`; update `release/render.min.js` only when runtime code changes. Scoped CSS is compiled server-side before the browser runtime loads.
+
 ## Coding Style & Naming Conventions
 
 Use TypeScript for CLI/server/compiler code and plain JavaScript for browser runtime code already under `src/render/`. Follow the existing two-space indentation style. Prefer named exports for shared functions and keep file names lowercase with hyphenated names where needed, such as `css-scope.ts`. Keep Pug fixture names aligned with routes, for example `show.pug`, `layout.pug`, and `index.pug`.
@@ -26,3 +46,10 @@ Tests use Deno's test runner with Playwright assertions. Add or update fixtures 
 Recent commits use scoped, imperative messages such as `dev: fix: auto-inject livereload script` and `render: fix: forms should be summitted with urlencoded, by default`. Keep the first segment tied to the affected area (`dev`, `render`, `compiler`, `dist`) and state the behavior change clearly.
 
 Pull requests should include a short description, the commands run, and any relevant fixture or screenshot notes for browser-visible changes. Link related issues when available and call out release artifact updates to `release/render.min.js`.
+
+## Release
+
+1. Build minified runtime: `deno bundle --minify -o ./release/render.min.js ./src/render/render.js`
+2. Add built `render.min.js` to git by amending last commit
+3. Tag new version by increasing major, minor, or patch version
+4. Push after double confirm

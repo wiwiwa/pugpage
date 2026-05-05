@@ -133,8 +133,7 @@ function bundleModules(
     const fnBody = JSON.stringify(`with(data) {\n${mod.code}\n}`);
     return `    case '${mod.path}': {
       var __fn = new Function("data", "__s", "__v", ${fnBody});
-      var render = function(data) { return __fn(data, __s, __v); };
-      return render;
+      return function(data) { return __fn(data, __s, __v); };
     }`;
   }).join("\n");
 

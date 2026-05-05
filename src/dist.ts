@@ -17,7 +17,7 @@ export function defaultIndexHtml(): string {
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <script type="module" src="dist.js"></script>
+  <script type="module" src="/$$dev/dist.js"></script>
 </head>
 <body>
   <pug-page src="/index" />
@@ -44,7 +44,9 @@ export async function buildDist(opts: { root: string; out: string }) {
     Deno.exit(1);
   }
   const template = await Deno.readTextFile(indexPath);
-  const html = template.replace(`src="dist.js"`, `src="${jsFile}"`);
+  const html = template
+    .replace(`src="/$$dev/dist.js"`, `src="${jsFile}"`)
+    .replace(`src="dist.js"`, `src="${jsFile}"`);
   await Deno.writeTextFile(`${opts.out}/index.html`, html);
   console.log(`Production build written to ${opts.out}`);
 }

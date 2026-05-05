@@ -247,9 +247,13 @@ function generateTag(node: PugASTNode): string {
   }
 
   const hasRest = node.attrs?.some((a) => (a as { name: string }).name === "rest");
-  if (node.name === "pug-page" && hasRest && childrenExpr) {
+  const hasAction = node.attrs?.some((a) => (a as { name: string }).name === "action");
+  const hasHref = node.attrs?.some((a) => (a as { name: string }).name === "href");
+  const needsTpl = (node.name === "pug-page" && hasRest) ||
+    (node.name === "form" && (hasRest || (hasAction && hasHref)));
+  if (needsTpl && childrenExpr) {
     dataParts.push(`__tpl: function(__d){with(__d){return ${childrenExpr}}}`);
-    dataParts.push(`hook: { create(_,vn){vn.elm.__tpl=vn.data.__tpl} }`);
+    dataParts.push(`hook: { create(_,vn){vn.elm.__tpl=vn.data.__tpl; vn.elm.__needsScope=true} }`);
     childrenExpr = "";
   }
 

@@ -6,14 +6,25 @@ PugPage is a command-line tool for bundling and serving Pug files, enabling rapi
   - Usage: `pug-page(src='user.pug' rest='/api/user/1000')`
   - `src`: Pug template to render
   - `rest`: RESTful JSON resource for rendering
+- **Form Handling**
+  - Usage `form(rest='/api/profile' action='/api/user/1' href='/user/1')` — fetches initial data from `rest`, submit to `action`, redirect to `href`.
+    - both `rest` and `action` updates scope data
+- **Reactive Event Handler**
+  - Typical we just assign new values to data in scope, and DOM nodes are auto updated
 - **Variables**
   - `$user`: Current logged-in user object.
+    - `name`: User display name
     - `roles`: Array of roles (strings).
-    - `lang`: User language (default: null).
+    - `lang`: User language
+    - `loginUrl`: Login page URL (default: `"/login"`).
+      - Any 401 response redirects to this URL.
+    - `setAuthHeader(authData, persistent)`: Store an `Authorization` header value. When persistent, auth data is persist across browser restart
+    - `logout()`: Clear login information
   - `$page`: Current page object.
     - `path`: Page path.
     - `args`: Array of arguments (see URL handling).
     - `params`: Query parameters (e.g., `/user/?id=1` returns `{id: '1'}`).
+  - `$rest`: Fetch result of url `rest` — `null` before fetch, `{ status, data }` after.
 - **Tag Attributes**
   - `$role`: String or array. Renders tag only if `$user.roles` matches.
     - Example: `div($role='USER_ADMIN')` renders only for users with the `USER_ADMIN` role.
@@ -34,8 +45,6 @@ PugPage is a command-line tool for bundling and serving Pug files, enabling rapi
       6. `/system.pug` (if found, `$page.args = ['user', '1', 'edit']`)
       7. `/404.pug` (if found, `$page.args = ['system', 'user', '1', 'edit']`)
   - Clicking an `<a>` tag updates the URL.
-  - Submitting a `<form>` expects a JSON response and updates the URL to the `href` attribute.
-    - Example: `form(action='/api/user/1' href='/user/1')` posts to `/api/user/1` and redirects to `/user/1`.
   - Anti Page Reloading: It is expected the server hosts the production JS file to return `/index.html` when 404 page should be returned.
 - **Web Component Support**
   - Third-party web components work in pug templates. Unknown tags pass through to the DOM as-is.
@@ -71,6 +80,7 @@ pugpage update                        Update pugpage to latest version
   index.pug             # entry page
   index.html            # HTML shell (auto-created by dev server)
   layout.pug            # default layout
+  login.pug             # login page with reactive form
   /system
     layout.pug          # layout for /system/*
     /user
@@ -82,20 +92,3 @@ pugpage update                        Update pugpage to latest version
     /image
       user.jpg
 ```
-
-# Development
-
-```bash
-# Run tests
-$ deno test --allow-all
-
-# Start dev server against test pages
-$ deno run --allow-all ./src/main.ts dev --root ./test/pages
-```
-
-### Release new version
-- build minified version by
-  `deno bundle --minify -o ./release/render.min.js ./src/render/render.js`
-- add built render.min.js to git by amending last commit
-- tag new version by increase major, minor or patch version
-- push after double confirm

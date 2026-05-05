@@ -1,0 +1,19 @@
+extends NONE
+
+h1 Login
+
+form(action="/$$dev/api/login" href="/" method="POST")
+  div
+    label Username
+    input(name="username" value="demo")
+  div
+    label Password
+    input(name="password" type="password" value="demo")
+  button(type="submit") Login
+  if $rest.status === 200
+    p.success Logged in as #{$rest.data.name}
+    - $user.setAuthHeader("Bearer " + $rest.data.token, false)
+    - $user.name = $rest.data.name
+    - $user.roles = $rest.data.roles
+  if $rest.status !== 200
+    p.error #{$rest.data.error}
