@@ -36,7 +36,7 @@ Deno.test("End2End Test", async () => {
   await page.locator("a.showUser").click();
   await expect(page.locator("body")).toContainText("demo");
   const styleText = await page.locator("style").evaluateAll((els) => els.map((e) => e.textContent).join(""));
-  expect(styleText).toContain("list-style");
+  expect(styleText).toContain(".sass-card");
 
   await browser.close();
   server.shutdown();

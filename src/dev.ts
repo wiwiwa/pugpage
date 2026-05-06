@@ -40,7 +40,7 @@ export async function startDevServer(opts: {
     switch (url.pathname) {
       case "/":
         return await indexResponse(root);
-      case "/$$dev/dist.js": {
+      case "/pugpage-dist.js": {
         const js = await compileDirectory(root, { renderUrl: "/$$dev/render.js" });
         return new Response(js, {
           headers: { "Content-Type": "application/javascript" },
@@ -209,10 +209,7 @@ async function proxyRequest(req: Request, target: string): Promise<Response> {
 
 async function indexResponse(root: string) {
   const html = await Deno.readTextFile(`${root}/index.html`);
-  const devHtml = html
-    .replaceAll('src="/dist.js"', () => 'src="/$$dev/dist.js"')
-    .replaceAll('src="dist.js"', () => 'src="/$$dev/dist.js"');
-  const injected = devHtml.replace("</head>", () =>
+  const injected = html.replace("</head>", () =>
     `<script>new EventSource('/$$dev/__livereload').addEventListener('message',function(e){if(e.data==='reload')location.reload()})</script></head>`);
   return new Response(injected, {
     headers: { "Content-Type": "text/html" },
