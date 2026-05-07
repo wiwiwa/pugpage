@@ -61,7 +61,7 @@ export async function startDevServer(opts: {
         if (req.method === "GET") return handleDemoUserGet(req);
         return Response.json({ error: "Method not allowed" }, { status: 405 });
     }
-    const resp = await serveDir(req, { fsRoot: root });
+    const resp = await serveDir(req, { fsRoot: root, quiet: true });
     if (resp.status !== 404 && resp.status !== 405) return resp;
     if (opts.staticDir) {
       const staticResp = await serveDir(req, { fsRoot: opts.staticDir });

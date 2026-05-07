@@ -1,0 +1,18 @@
+- /:
+    waitText: Login
+    url: /login
+    has: "button[type=submit]"
+
+- /login:
+    fill:
+      - "input[name=password]": demo
+    click: "button[type=submit]"
+    wait: a.logout
+    url: /
+    text: Logout
+    has: a.logout
+
+- /user/1000:
+    wait: li
+    text: demo
+    has: [li, style]

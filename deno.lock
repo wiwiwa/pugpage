@@ -21,6 +21,7 @@
     "jsr:@std/path@^1.1.0": "1.1.4",
     "jsr:@std/path@^1.1.4": "1.1.4",
     "jsr:@std/streams@^1.0.10": "1.0.10",
+    "jsr:@std/yaml@^1.1.0": "1.1.0",
     "npm:@playwright/test@^1.59.1": "1.59.1",
     "npm:@types/node@*": "22.15.15",
     "npm:million@*": "3.1.11",
@@ -110,6 +111,9 @@
     },
     "@std/streams@1.0.10": {
       "integrity": "75c0b1431873cd0d8b3d679015220204d36d3c7420d93b60acfc379eb0dc30af"
+    },
+    "@std/yaml@1.1.0": {
+      "integrity": "fc1c5c63e05c4c5eb6118355f557958035d41940d6c29d35b306ef7155d6edb0"
     }
   },
   "npm": {
@@ -891,6 +895,7 @@
       "jsr:@std/fs@1",
       "jsr:@std/http@1",
       "jsr:@std/path@^1.1.4",
+      "jsr:@std/yaml@^1.1.0",
       "npm:@playwright/test@^1.59.1",
       "npm:playwright@^1.59.1",
       "npm:pug@3",

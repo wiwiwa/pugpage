@@ -65,14 +65,43 @@ PugPage is a command-line tool for bundling and serving Pug files, enabling rapi
 ## CLI Reference
 
 ```
-pugpage dev [--root=.] [--port=8000] [--api=http://localhost:8080] [--static=./assets]
+pugpage dev [--root=.] [--port=8000] [--api=URL] [--static=DIR]
                                       Start dev server with live reload and API proxy
-                                      --static: additional directory to serve static files from
-pugpage dist [--root=.] [--out=$root/dist]
+pugpage dist [--root=.] [--out=DIR]
                                       Build for production
+pugpage test [--root=.] [--api=URL] [--static=DIR] <test.yaml>
+                                      Run declarative browser tests in headless mode
 pugpage install                       Install pugpage to ./pugpage
 pugpage update                        Update pugpage to latest version
 ```
+
+## Testing
+
+Write a `*.test.yaml` test file and run:
+
+```sh
+pugpage test ./test/my.test.yaml
+```
+
+Exits `0` when all tests pass, `1` on any failure.
+
+Example test file:
+
+### Assertions
+
+- `text: [...]` — every string must appear in the page body
+- `has: [...]` — every CSS selector must match at least one element
+- `no: [...]` — every CSS selector must match zero elements
+- `url: /path` — expected URL after navigation/redirects
+
+### Actions
+
+Actions run in fixed order: `fill` → `select` → `check` → `uncheck` → `click` → `wait` → `waitText` → assertions.
+
+- `fill` — list of `{selector: value}` maps
+- `click` — selector string or array
+- `wait` — selector string or array; waits for visible elements
+- `waitText` — text string or array; waits for body text
 
 ## Example Directory Structure
 

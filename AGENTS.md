@@ -7,6 +7,7 @@ PugPage is a Deno-based CLI and browser runtime for serving and bundling Pug pag
 ## Build, Test, and Development Commands
 
 - `deno test --allow-all`: runs the full test suite, including Playwright browser checks.
+- `deno run --allow-all ./src/main.ts test --root ./test/pages test/pugpage.test.yaml`: runs declarative YAML tests via Playwright.
 - `deno run --allow-all ./src/main.ts dev --root ./test/pages`: starts the dev server against fixture pages.
 - `deno run --allow-all ./src/main.ts dist --root ./test/pages --out ./test/pages/dist`: builds a production bundle for a sample project.
 - `deno bundle --minify -o ./release/render.min.js ./src/render/render.js`: regenerates the browser runtime release file before a release.
@@ -48,7 +49,12 @@ Use TypeScript for CLI/server/compiler code and plain JavaScript for browser run
 
 ## Testing Guidelines
 
-Tests use Deno's test runner with Playwright assertions. Add or update fixtures under `test/pages/` when behavior depends on routing, layouts, forms, or scoped CSS. Name tests by the feature or module under test, for example `compiler.compile`. Always close browsers and shut down test servers to avoid hanging `deno test`.
+Tests use Deno's test runner with Playwright assertions. Add or update fixtures under `test/pages/` when behavior depends on routing, layouts, forms, or scoped CSS. Always close browsers and shut down test servers to avoid hanging `deno test`.
+Declarative test runner (`src/test.ts`):
+  - `pugpage test <test.yaml>` runs a single YAML test file
+  - Each YAML file is a list of route entries with actions (`fill`, `click`, `wait`) and assertions (`text`, `has`, `no`, `url`)
+  - Fail-fast: stops on first failure; exits `0` on pass, `1` on any failure
+  - `test/E2E.test.ts` is a thin wrapper that calls `runTests()` from `src/test.ts`
 
 ## Commit & Pull Request Guidelines
 
