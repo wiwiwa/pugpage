@@ -85,56 +85,65 @@ pugpage test ./pugpage.test.yaml
 
 Exits `0` when all tests pass, `1` on any failure.
 
-Example:
+Example (see `test/pugpage.test.yaml` for a full example):
 
 ```yaml
-auth:
+login:
   login successfully:
     - goto: /login
       fill:
-        - "input[name=password]": demo
+        "input[name=password]": demo
       click: "button[type=submit]"
-      wait: a.logout
-      url: /
-      text: Logout
-
-  wrong then correct password:
-    - goto: /login
-      fill:
-        - "input[name=password]": wrong
-      click: "button[type=submit]"
-      text: Invalid credentials
-
-    - fill:
-        - "input[name=password]": demo
-      click: "button[type=submit]"
-      wait: a.logout
-      url: /
-
-user:
-  show user:
-    - goto: /user/1000
-      text: demo
-      has: li
+      has: .logout
 ```
 
-Top-level keys are scenarios. Nested keys are test case names. A test case is a list of one or more action groups. Action groups run in list order; if `goto` is omitted, the group continues from the current page.
+Every key is a group name or test case name. A key whose value is a list is an executable test case. A key whose value is a map is a group containing more tests. Action groups run in list order; if `goto` is omitted, the group continues from the current page.
+
+### Selector targets
+
+`wait`, `has`, and `no` accept the same value shapes:
+
+```yaml
+has: ".card"
+no: ".error"
+wait: ".dashboard"
+```
+
+```yaml
+has:
+  ".card-title": Devices
+no:
+  ".error": Invalid credentials
+wait:
+  body: Login
+```
+
+```yaml
+has:
+  - ".card"
+  - ".card-title": Devices
+  - li: [demo, User ID]
+```
+
+- String: CSS selector only
+- Object: selector plus required text. Value is a string or array of strings — each text must appear somewhere under that selector
+- List: each item is evaluated in order
+- Use `body: "some text"` for whole-page text assertions or waits
+- `wait` waits for selector targets to become visible
+- `has` asserts selector targets exist
+- `no` asserts selector targets do not exist
 
 ### Action group keys
 
-Keys run in fixed order: `goto`, `fill`, `select`, `click`, `wait`, `waitText`, then assertions.
-
 - `goto` — route or absolute URL to visit
-- `fill` — ordered list of `{selector: value}` maps
-- `select` — ordered list of `{selector: value}` maps
-- `click` — selector string or array
-- `wait` — selector string or array; waits for visible elements
-- `waitText` — text string or array; waits for body text
+- `fill` — map of `{selector: value}`
+- `select` — map of `{selector: value}`
+- `click` — selector string or array; auto-waits for element to be visible, stable, and enabled
+- `wait` — selector target (see above); waits for visible elements
 - `url` — expected final route after navigation/redirects
 - `status` — expected main document status after `goto`
-- `text` — text string or array that must appear in the page body
-- `has` — CSS selector string or array that must exist
-- `no` — CSS selector string or array that must not exist
+- `has` — selector target (see above); asserts elements exist
+- `no` — selector target (see above); asserts elements do not exist
 - `timeout` — action group timeout in milliseconds (default: 5000)
 
 ## Example Directory Structure

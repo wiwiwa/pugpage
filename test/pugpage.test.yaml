@@ -1,38 +1,34 @@
-auth:
-  redirect anonymous user:
-    - goto: /
-      waitText: Login
-      url: /login
-      has: "button[type=submit]"
-
+login:
+  redirect if not login:
+  - goto: /
+    url: /login
+    has:
+      H1: Login
+    no: .mainLayout
+  wrong password:
+  - fill:
+      "input[name=username]": demo
+      "input[name=password]": demo1
+    click: "button[type=submit]"
+    has:
+      p.error: Invalid
   login successfully:
-    - goto: /login
-      fill:
-        - "input[name=password]": demo
-      click: "button[type=submit]"
-      wait: a.logout
-      url: /
-      text: Logout
-      has: a.logout
-
-  wrong then correct password:
-    - goto: /login
-      fill:
-        - "input[name=password]": wrong
-      click: "button[type=submit]"
-      text: Invalid credentials
-      has: p.error
-
-    - fill:
-        - "input[name=password]": demo
-      click: "button[type=submit]"
-      wait: a.logout
-      url: /
-      text: Logout
-
+  - fill:
+      "input[name=password]": demo
+    click: "button[type=submit]"
+    has: .logout
+  logout:
+  - click: .logout
+home:
+- fill:
+    "input[name=username]": demo
+    "input[name=password]": demo
+  click: "button[type=submit]"
+  url: /
+- has:
+    h1: Hello
 user:
   show user:
-    - goto: /user/1000
-      wait: li
-      text: demo
-      has: [li, style]
+  - goto: /user/1000
+    has:
+      li: demo

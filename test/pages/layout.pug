@@ -1,7 +1,7 @@
-h1 Home Layout
+h1.mainLayout Main Layout
 
 pug-page(rest='/$$dev/api/login')
-  if(name)
+  if name
     - $user.name = name
     - $user.roles = roles
     a.logout(href="#" onclick="$user.logout()") Logout #{name}

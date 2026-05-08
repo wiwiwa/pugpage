@@ -52,8 +52,10 @@ Use TypeScript for CLI/server/compiler code and plain JavaScript for browser run
 Tests use Deno's test runner with Playwright assertions. Add or update fixtures under `test/pages/` when behavior depends on routing, layouts, forms, or scoped CSS. Always close browsers and shut down test servers to avoid hanging `deno test`.
 Declarative test runner (`src/test.ts`):
   - `pugpage test <test.yaml>` runs a single YAML test file
-  - YAML top-level keys are scenarios; nested maps are groups; list values are named test cases
-  - Each test case contains one or more action groups with actions (`goto`, `fill`, `select`, `click`, `wait`, `waitText`) and assertions (`text`, `has`, `no`, `url`, `status`)
+  - YAML is a test tree: map values are groups, and list values are named test cases
+  - Each test case contains one or more action groups with actions (`goto`, `fill`, `select`, `click`, `wait`) and assertions (`has`, `no`, `url`, `status`)
+  - `wait`, `has`, `no` accept unified selector targets: string (CSS selector), object (selector + required text), or array of mixed
+  - Use `body: "text"` for whole-page text checks; replaces removed `text` and `waitText` keys
   - If `goto` is omitted, the action group continues from the current page state
   - Fail-fast: stops on first failure; exits `0` on pass, `1` on any failure
   - `test/E2E.test.ts` is a thin wrapper that calls `runTests()` from `src/test.ts`

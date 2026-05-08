@@ -11,9 +11,6 @@ form(action="/$$dev/api/login" href="/" method="POST")
     input(name="password" type="password" value="demo")
   button(type="submit") Login
   if $rest.status === 200
-    p.success Logged in as #{$rest.data.name}
     - $user.setAuthHeader("Bearer " + $rest.data.token, false)
-    - $user.name = $rest.data.name
-    - $user.roles = $rest.data.roles
-  if $rest.status !== 200
+  else
     p.error #{$rest.data.error}

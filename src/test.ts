@@ -1,30 +1,45 @@
 import { parse } from "@std/yaml";
-import { chromium, type Page, type Browser } from "playwright";
+import { chromium, type Page, type Browser, type Response } from "playwright";
 import { startDevServer } from "./dev.ts";
+
+type SelectorTextMap = Record<string, string | string[]>;
+type SelectorTarget = string | SelectorTextMap | Array<string | SelectorTextMap>;
 
 interface ActionGroup {
   goto?: string;
   url?: string;
-  text?: string | string[];
-  has?: string | string[];
-  no?: string | string[];
-  fill?: Record<string, string>[];
-  select?: Record<string, string>[];
+  has?: SelectorTarget;
+  no?: SelectorTarget;
+  fill?: Record<string, string>;
+  select?: Record<string, string>;
   click?: string | string[];
-  wait?: string | string[];
-  waitText?: string | string[];
+  wait?: SelectorTarget;
   timeout?: number;
   status?: number;
 }
 
 interface TestCase {
   name: string;
-  groups: ActionGroup[];
+  groups: Record<string, unknown>[];
 }
 
 function asArray(val: string | string[] | undefined): string[] {
   if (!val) return [];
   return Array.isArray(val) ? val : [val];
+}
+
+function normalizeSelectorTargets(target: SelectorTarget | undefined): Array<[string, string | string[] | null]> {
+  if (!target) return [];
+  if (typeof target === "string") return [[target, null]];
+  if (Array.isArray(target)) {
+    const result: Array<[string, string | string[] | null]> = [];
+    for (const item of target) {
+      if (typeof item === "string") result.push([item, null]);
+      else for (const [sel, texts] of Object.entries(item)) result.push([sel, texts]);
+    }
+    return result;
+  }
+  return Object.entries(target);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -35,7 +50,7 @@ function isActionGroupList(value: unknown): value is ActionGroup[] {
   return Array.isArray(value) && value.every(isRecord);
 }
 
-function flattenScenarioTests(node: unknown, path: string[] = []): TestCase[] {
+function flattenTestTree(node: unknown, path: string[] = []): TestCase[] {
   if (!isRecord(node)) {
     throw new Error(`Invalid test file: ${path.join(" > ") || "root"} must be an object`);
   }
@@ -47,11 +62,11 @@ function flattenScenarioTests(node: unknown, path: string[] = []): TestCase[] {
       if (value.length === 0) {
         throw new Error(`Invalid test case ${nextPath.join(" > ")}: must contain at least one action group`);
       }
-      cases.push({ name: nextPath.join(" > "), groups: value });
+      cases.push({ name: nextPath.join(" > "), groups: value as Record<string, unknown>[] });
       continue;
     }
     if (isRecord(value)) {
-      cases.push(...flattenScenarioTests(value, nextPath));
+      cases.push(...flattenTestTree(value, nextPath));
       continue;
     }
     throw new Error(`Invalid test node ${nextPath.join(" > ")}: expected object or action group list`);
@@ -63,81 +78,105 @@ async function runActionGroup(
   page: Page,
   baseUrl: string,
   label: string,
-  group: ActionGroup,
+  group: Record<string, unknown>,
 ): Promise<string | null> {
-  const timeout = group.timeout ?? 5000;
-  let response = null;
+  const timeout = (group.timeout as number) ?? 5000;
+  let response: Response | null = null;
 
-  if (group.goto) {
-    const targetUrl = new URL(group.goto, baseUrl).href;
-    response = await page.goto(targetUrl, { timeout, waitUntil: "load" });
-  }
+  const actionFns: Record<string, (val: unknown) => Promise<string | null>> = {
+    async goto(val) {
+      const targetUrl = new URL(val as string, baseUrl).href;
+      response = await page.goto(targetUrl, { timeout, waitUntil: "load" });
+      return null;
+    },
+    async status(val) {
+      if (response?.status() !== (val as number)) {
+        return `${label}: expected status ${val}, got ${response?.status()}`;
+      }
+      return null;
+    },
+    async fill(val) {
+      for (const [selector, value] of Object.entries(val as Record<string, string>)) {
+        await page.locator(selector).fill(value, { timeout });
+      }
+      return null;
+    },
+    async select(val) {
+      for (const [selector, value] of Object.entries(val as Record<string, string>)) {
+        await page.locator(selector).selectOption(value, { timeout });
+      }
+      return null;
+    },
+    async click(val) {
+      for (const sel of asArray(val as string | string[])) {
+        await page.locator(sel).click({ timeout });
+      }
+      return null;
+    },
+    async wait(val) {
+      for (const [sel, texts] of normalizeSelectorTargets(val as SelectorTarget)) {
+        try {
+          if (texts) {
+            for (const t of Array.isArray(texts) ? texts : [texts]) {
+              await page.locator(sel).filter({ hasText: t }).first().waitFor({ state: "visible", timeout });
+            }
+          } else {
+            await page.locator(sel).first().waitFor({ state: "visible", timeout });
+          }
+        } catch {
+          return `${label}: wait for "${sel}" timed out`;
+        }
+      }
+      return null;
+    },
+    async url(val) {
+      const expected = new URL(val as string, baseUrl).pathname;
+      try {
+        await page.waitForURL((url) => url.pathname === expected || url.pathname === expected.replace(/\/$/, ""), { timeout });
+      } catch {
+        const actual = new URL(page.url()).pathname;
+        return `${label}: expected url ${expected}, got ${actual} (timed out)`;
+      }
+      return null;
+    },
+    async has(val) {
+      for (const [sel, texts] of normalizeSelectorTargets(val as SelectorTarget)) {
+        try {
+          if (texts) {
+            for (const t of Array.isArray(texts) ? texts : [texts]) {
+              await page.locator(sel).filter({ hasText: t }).first().waitFor({ state: "attached", timeout });
+            }
+          } else {
+            await page.locator(sel).first().waitFor({ state: "attached", timeout });
+          }
+        } catch {
+          return `${label}: expected "${sel}" to exist`;
+        }
+      }
+      return null;
+    },
+    async no(val) {
+      for (const [sel, texts] of normalizeSelectorTargets(val as SelectorTarget)) {
+        if (texts) {
+          for (const t of Array.isArray(texts) ? texts : [texts]) {
+            const count = await page.locator(sel).filter({ hasText: t }).count();
+            if (count > 0) return `${label}: expected "${sel}" with text "${t}" not to exist, found ${count}`;
+          }
+        } else {
+          const count = await page.locator(sel).count();
+          if (count > 0) return `${label}: expected "${sel}" not to exist, found ${count}`;
+        }
+      }
+      return null;
+    },
+  };
 
-  if (group.status !== undefined && response?.status() !== group.status) {
-    return `${label}: expected status ${group.status}, got ${response?.status()}`;
-  }
-
-  for (const entry of group.fill ?? []) {
-    const [selector, value] = Object.entries(entry)[0];
-    await page.locator(selector).fill(value);
-  }
-
-  for (const entry of group.select ?? []) {
-    const [selector, value] = Object.entries(entry)[0];
-    await page.locator(selector).selectOption(value);
-  }
-
-  for (const sel of asArray(group.click)) {
-    await page.locator(sel).click();
-  }
-
-  for (const sel of asArray(group.wait)) {
-    try {
-      await page.locator(sel).first().waitFor({ state: "visible", timeout });
-    } catch {
-      return `${label}: wait for "${sel}" timed out`;
-    }
-  }
-
-  for (const text of asArray(group.waitText)) {
-    try {
-      await page.locator("body").filter({ hasText: text }).waitFor({ timeout });
-    } catch {
-      return `${label}: waitText "${text}" timed out`;
-    }
-  }
-
-  if (group.url) {
-    const expected = new URL(group.url, baseUrl).pathname;
-    try {
-      await page.waitForURL((url) => url.pathname === expected || url.pathname === expected.replace(/\/$/, ""), { timeout });
-    } catch {
-      const actual = new URL(page.url()).pathname;
-      return `${label}: expected url ${expected}, got ${actual} (timed out)`;
-    }
-  }
-
-  for (const text of asArray(group.text)) {
-    try {
-      await page.locator("body").filter({ hasText: text }).waitFor({ timeout });
-    } catch {
-      return `${label}: text "${text}" not found`;
-    }
-  }
-
-  for (const sel of asArray(group.has)) {
-    try {
-      await page.locator(sel).first().waitFor({ state: "attached", timeout });
-    } catch {
-      return `${label}: expected "${sel}" to exist`;
-    }
-  }
-
-  for (const sel of asArray(group.no)) {
-    const count = await page.locator(sel).count();
-    if (count > 0) {
-      return `${label}: expected "${sel}" not to exist, found ${count}`;
-    }
+  for (const [key, val] of Object.entries(group)) {
+    if (key === "timeout") continue;
+    const fn = actionFns[key];
+    if (!fn) continue;
+    const failure = await fn(val);
+    if (failure) return failure;
   }
 
   return null;
@@ -160,7 +199,7 @@ export interface RunTestsOptions {
 
 export async function runTests(opts: RunTestsOptions): Promise<boolean> {
   const parsed = parse(await Deno.readTextFile(opts.testFile));
-  const testCases = flattenScenarioTests(parsed);
+  const testCases = flattenTestTree(parsed);
 
   const server = await startDevServer({
     root: opts.root,
