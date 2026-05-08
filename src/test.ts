@@ -12,7 +12,7 @@ interface ActionGroup {
   no?: SelectorTarget;
   fill?: Record<string, string>;
   select?: Record<string, string>;
-  click?: string | string[];
+  click?: SelectorTarget;
   wait?: SelectorTarget;
   timeout?: number;
   status?: number;
@@ -23,10 +23,6 @@ interface TestCase {
   groups: Record<string, unknown>[];
 }
 
-function asArray(val: string | string[] | undefined): string[] {
-  if (!val) return [];
-  return Array.isArray(val) ? val : [val];
-}
 
 function normalizeSelectorTargets(target: SelectorTarget | undefined): Array<[string, string | string[] | null]> {
   if (!target) return [];
@@ -108,8 +104,14 @@ async function runActionGroup(
       return null;
     },
     async click(val) {
-      for (const sel of asArray(val as string | string[])) {
-        await page.locator(sel).click({ timeout });
+      for (const [sel, texts] of normalizeSelectorTargets(val as SelectorTarget)) {
+        if (texts) {
+          for (const t of Array.isArray(texts) ? texts : [texts]) {
+            await page.locator(sel).filter({ hasText: t }).first().click({ timeout });
+          }
+        } else {
+          await page.locator(sel).first().click({ timeout });
+        }
       }
       return null;
     },

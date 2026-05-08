@@ -9,13 +9,13 @@ login:
   - fill:
       "input[name=username]": demo
       "input[name=password]": demo1
-    click: "button[type=submit]"
+    click: {button: Login}
     has:
       p.error: Invalid
   login successfully:
   - fill:
       "input[name=password]": demo
-    click: "button[type=submit]"
+    click: {button: Login}
     has: .logout
   logout:
   - click: .logout

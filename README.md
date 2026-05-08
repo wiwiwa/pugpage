@@ -138,7 +138,7 @@ has:
 - `goto` — route or absolute URL to visit
 - `fill` — map of `{selector: value}`
 - `select` — map of `{selector: value}`
-- `click` — selector string or array; auto-waits for element to be visible, stable, and enabled
+- `click` — selector target (see above); auto-waits for element to be visible, stable, and enabled
 - `wait` — selector target (see above); waits for visible elements
 - `url` — expected final route after navigation/redirects
 - `status` — expected main document status after `goto`

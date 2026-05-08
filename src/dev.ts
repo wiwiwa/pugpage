@@ -29,7 +29,7 @@ export async function startDevServer(opts: {
   }
   const root = opts.root;
 
-  await ensureIndexHtml(root);
+  if (opts.watch) await ensureIndexHtml(root);
 
   const server = Deno.serve({ port: opts.port }, async (req: Request) => {
     const url = new URL(req.url);
