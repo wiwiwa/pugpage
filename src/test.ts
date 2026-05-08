@@ -2,15 +2,14 @@ import { parse } from "@std/yaml";
 import { chromium, type Page, type Browser } from "playwright";
 import { startDevServer } from "./dev.ts";
 
-interface TestStep {
+interface ActionGroup {
+  goto?: string;
   url?: string;
   text?: string | string[];
   has?: string | string[];
   no?: string | string[];
   fill?: Record<string, string>[];
   select?: Record<string, string>[];
-  check?: string | string[];
-  uncheck?: string | string[];
   click?: string | string[];
   wait?: string | string[];
   waitText?: string | string[];
@@ -18,55 +17,81 @@ interface TestStep {
   status?: number;
 }
 
-type TestEntry = Record<string, TestStep>;
+interface TestCase {
+  name: string;
+  groups: ActionGroup[];
+}
 
 function asArray(val: string | string[] | undefined): string[] {
   if (!val) return [];
   return Array.isArray(val) ? val : [val];
 }
 
-async function runTestEntry(
-  page: Page,
-  baseUrl: string,
-  route: string,
-  step: TestStep,
-): Promise<string | null> {
-  const label = `${route}`;
-  const timeout = step.timeout ?? 5000;
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
 
-  // Navigate
-  const targetUrl = new URL(route, baseUrl).href;
-  const response = await page.goto(targetUrl, { timeout, waitUntil: "load" });
+function isActionGroupList(value: unknown): value is ActionGroup[] {
+  return Array.isArray(value) && value.every(isRecord);
+}
 
-  if (step.status && response?.status() !== step.status) {
-    return `${label}: expected status ${step.status}, got ${response?.status()}`;
+function flattenScenarioTests(node: unknown, path: string[] = []): TestCase[] {
+  if (!isRecord(node)) {
+    throw new Error(`Invalid test file: ${path.join(" > ") || "root"} must be an object`);
   }
 
-  // Actions in fixed order: fill, select, check, uncheck, click
-  for (const entry of step.fill ?? []) {
+  const cases: TestCase[] = [];
+  for (const [name, value] of Object.entries(node)) {
+    const nextPath = [...path, name];
+    if (isActionGroupList(value)) {
+      if (value.length === 0) {
+        throw new Error(`Invalid test case ${nextPath.join(" > ")}: must contain at least one action group`);
+      }
+      cases.push({ name: nextPath.join(" > "), groups: value });
+      continue;
+    }
+    if (isRecord(value)) {
+      cases.push(...flattenScenarioTests(value, nextPath));
+      continue;
+    }
+    throw new Error(`Invalid test node ${nextPath.join(" > ")}: expected object or action group list`);
+  }
+  return cases;
+}
+
+async function runActionGroup(
+  page: Page,
+  baseUrl: string,
+  label: string,
+  group: ActionGroup,
+): Promise<string | null> {
+  const timeout = group.timeout ?? 5000;
+  let response = null;
+
+  if (group.goto) {
+    const targetUrl = new URL(group.goto, baseUrl).href;
+    response = await page.goto(targetUrl, { timeout, waitUntil: "load" });
+  }
+
+  if (group.status !== undefined && response?.status() !== group.status) {
+    return `${label}: expected status ${group.status}, got ${response?.status()}`;
+  }
+
+  for (const entry of group.fill ?? []) {
     const [selector, value] = Object.entries(entry)[0];
     await page.locator(selector).fill(value);
   }
 
-  for (const entry of step.select ?? []) {
+  for (const entry of group.select ?? []) {
     const [selector, value] = Object.entries(entry)[0];
     await page.locator(selector).selectOption(value);
   }
 
-  for (const sel of asArray(step.check)) {
-    await page.locator(sel).check();
-  }
-
-  for (const sel of asArray(step.uncheck)) {
-    await page.locator(sel).uncheck();
-  }
-
-  for (const sel of asArray(step.click)) {
+  for (const sel of asArray(group.click)) {
     await page.locator(sel).click();
   }
 
-  // Waits
-  for (const sel of asArray(step.wait)) {
+  for (const sel of asArray(group.wait)) {
     try {
       await page.locator(sel).first().waitFor({ state: "visible", timeout });
     } catch {
@@ -74,22 +99,16 @@ async function runTestEntry(
     }
   }
 
-  for (const text of asArray(step.waitText)) {
+  for (const text of asArray(group.waitText)) {
     try {
-      await page.locator("body").waitFor({ timeout });
-      const body = await page.locator("body").textContent();
-      if (!body?.includes(text)) {
-        return `${label}: waitText "${text}" not found in body`;
-      }
+      await page.locator("body").filter({ hasText: text }).waitFor({ timeout });
     } catch {
       return `${label}: waitText "${text}" timed out`;
     }
   }
 
-  // Assertions
-  // Wait for URL if specified (handles async redirects)
-  if (step.url) {
-    const expected = new URL(step.url, baseUrl).pathname;
+  if (group.url) {
+    const expected = new URL(group.url, baseUrl).pathname;
     try {
       await page.waitForURL((url) => url.pathname === expected || url.pathname === expected.replace(/\/$/, ""), { timeout });
     } catch {
@@ -98,28 +117,37 @@ async function runTestEntry(
     }
   }
 
-  const bodyText = await page.locator("body").textContent() ?? "";
-
-  for (const text of asArray(step.text)) {
-    if (!bodyText.includes(text)) {
+  for (const text of asArray(group.text)) {
+    try {
+      await page.locator("body").filter({ hasText: text }).waitFor({ timeout });
+    } catch {
       return `${label}: text "${text}" not found`;
     }
   }
 
-  for (const sel of asArray(step.has)) {
-    const count = await page.locator(sel).count();
-    if (count === 0) {
+  for (const sel of asArray(group.has)) {
+    try {
+      await page.locator(sel).first().waitFor({ state: "attached", timeout });
+    } catch {
       return `${label}: expected "${sel}" to exist`;
     }
   }
 
-  for (const sel of asArray(step.no)) {
+  for (const sel of asArray(group.no)) {
     const count = await page.locator(sel).count();
     if (count > 0) {
       return `${label}: expected "${sel}" not to exist, found ${count}`;
     }
   }
 
+  return null;
+}
+
+async function runTestCase(page: Page, baseUrl: string, testCase: TestCase): Promise<string | null> {
+  for (let i = 0; i < testCase.groups.length; i++) {
+    const failure = await runActionGroup(page, baseUrl, `${testCase.name} [${i + 1}]`, testCase.groups[i]);
+    if (failure) return failure;
+  }
   return null;
 }
 
@@ -131,6 +159,9 @@ export interface RunTestsOptions {
 }
 
 export async function runTests(opts: RunTestsOptions): Promise<boolean> {
+  const parsed = parse(await Deno.readTextFile(opts.testFile));
+  const testCases = flattenScenarioTests(parsed);
+
   const server = await startDevServer({
     root: opts.root,
     port: 0,
@@ -153,12 +184,10 @@ export async function runTests(opts: RunTestsOptions): Promise<boolean> {
 
   let allPassed = true;
 
-  const entries = parse(await Deno.readTextFile(opts.testFile)) as TestEntry[];
-  for (const entry of entries) {
-    const [route, step] = Object.entries(entry)[0];
-    Deno.stdout.write(new TextEncoder().encode(`  ${route} ... `));
+  for (const testCase of testCases) {
+    Deno.stdout.write(new TextEncoder().encode(`  ${testCase.name} ... `));
 
-    const failure = await runTestEntry(page, baseUrl, route, step);
+    const failure = await runTestCase(page, baseUrl, testCase);
 
     if (failure) {
       console.log("\x1b[31mFAILED\x1b[0m");

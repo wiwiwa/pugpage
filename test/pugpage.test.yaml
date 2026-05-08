@@ -1,18 +1,38 @@
-- /:
-    waitText: Login
-    url: /login
-    has: "button[type=submit]"
+auth:
+  redirect anonymous user:
+    - goto: /
+      waitText: Login
+      url: /login
+      has: "button[type=submit]"
 
-- /login:
-    fill:
-      - "input[name=password]": demo
-    click: "button[type=submit]"
-    wait: a.logout
-    url: /
-    text: Logout
-    has: a.logout
+  login successfully:
+    - goto: /login
+      fill:
+        - "input[name=password]": demo
+      click: "button[type=submit]"
+      wait: a.logout
+      url: /
+      text: Logout
+      has: a.logout
 
-- /user/1000:
-    wait: li
-    text: demo
-    has: [li, style]
+  wrong then correct password:
+    - goto: /login
+      fill:
+        - "input[name=password]": wrong
+      click: "button[type=submit]"
+      text: Invalid credentials
+      has: p.error
+
+    - fill:
+        - "input[name=password]": demo
+      click: "button[type=submit]"
+      wait: a.logout
+      url: /
+      text: Logout
+
+user:
+  show user:
+    - goto: /user/1000
+      wait: li
+      text: demo
+      has: [li, style]

@@ -77,31 +77,65 @@ pugpage update                        Update pugpage to latest version
 
 ## Testing
 
-Write a `*.test.yaml` test file and run:
+Write a `*.test.yaml` file and run:
 
 ```sh
-pugpage test ./test/my.test.yaml
+pugpage test ./pugpage.test.yaml
 ```
 
 Exits `0` when all tests pass, `1` on any failure.
 
-Example test file:
+Example:
 
-### Assertions
+```yaml
+auth:
+  login successfully:
+    - goto: /login
+      fill:
+        - "input[name=password]": demo
+      click: "button[type=submit]"
+      wait: a.logout
+      url: /
+      text: Logout
 
-- `text: [...]` — every string must appear in the page body
-- `has: [...]` — every CSS selector must match at least one element
-- `no: [...]` — every CSS selector must match zero elements
-- `url: /path` — expected URL after navigation/redirects
+  wrong then correct password:
+    - goto: /login
+      fill:
+        - "input[name=password]": wrong
+      click: "button[type=submit]"
+      text: Invalid credentials
 
-### Actions
+    - fill:
+        - "input[name=password]": demo
+      click: "button[type=submit]"
+      wait: a.logout
+      url: /
 
-Actions run in fixed order: `fill` → `select` → `check` → `uncheck` → `click` → `wait` → `waitText` → assertions.
+user:
+  show user:
+    - goto: /user/1000
+      text: demo
+      has: li
+```
 
-- `fill` — list of `{selector: value}` maps
+Top-level keys are scenarios. Nested keys are test case names. A test case is a list of one or more action groups. Action groups run in list order; if `goto` is omitted, the group continues from the current page.
+
+### Action group keys
+
+Keys run in fixed order: `goto`, `fill`, `select`, `click`, `wait`, `waitText`, then assertions.
+
+- `goto` — route or absolute URL to visit
+- `fill` — ordered list of `{selector: value}` maps
+- `select` — ordered list of `{selector: value}` maps
 - `click` — selector string or array
 - `wait` — selector string or array; waits for visible elements
 - `waitText` — text string or array; waits for body text
+- `url` — expected final route after navigation/redirects
+- `status` — expected main document status after `goto`
+- `text` — text string or array that must appear in the page body
+- `has` — CSS selector string or array that must exist
+- `no` — CSS selector string or array that must not exist
+- `timeout` — action group timeout in milliseconds (default: 5000)
 
 ## Example Directory Structure
 
