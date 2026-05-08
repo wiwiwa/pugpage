@@ -1,0 +1,41 @@
+name: Publish JSR
+
+on:
+  push:
+    tags:
+      - "*.*.*"
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Install Playwright browsers
+        run: deno run -A npm:playwright@^1.59.1 install --with-deps chromium
+
+      - name: Verify tag matches deno.json version
+        run: |
+          VERSION=$(deno eval "const c = JSON.parse(await Deno.readTextFile('deno.json')); console.log(c.version)")
+          TAG="${GITHUB_REF_NAME}"
+          test "$TAG" = "$VERSION" || {
+            echo "Tag $TAG does not match deno.json version $VERSION"
+            exit 1
+          }
+
+      - name: Test
+        run: deno test --allow-all --no-check
+
+      - name: Publish dry run
+        run: deno publish --dry-run
+
+      - name: Publish
+        run: deno publish
