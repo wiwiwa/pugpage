@@ -3,10 +3,10 @@ import { generateCode } from "./compiler/codegen.ts";
 import { findLayouts, resolveLayout, resolveExtendsLayout, toUrlPath, isLayoutFile } from "./compiler/layouts.ts";
 import { hashString } from "./compiler/css-scope.ts";
 
-import pugLoad from "npm:pug-load";
-import pugLink from "npm:pug-linker";
-import pugLex from "npm:pug-lexer";
-import pugParse from "npm:pug-parser";
+import pugLoad from "pug-load";
+import pugLink from "pug-linker";
+import pugLex from "pug-lexer";
+import pugParse from "pug-parser";
 
 
 /**

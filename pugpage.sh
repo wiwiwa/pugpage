@@ -14,6 +14,6 @@ fi
 
 PUGPAGE_SELF="$0" exec deno run \
   --import-map "${BASE}/deno.json" \
-  --allow-read --allow-write --allow-net --allow-env --allow-sys \
+  --allow-all \
   "${BASE}/src/main.ts" \
   "$@"
