@@ -30,7 +30,22 @@ The browser runtime exposes:
   - Both can coexist: `rest` for initial load, `action` for submit
 - Templates handle success/error via `- if($rest)` — no inline `<script>` needed
 - Codegen compiles form children into `__tpl` functions (same as `pug-page`)
-
+- Reactive event handlers — `on*` attributes compile to snabbdom `on` listeners with scope access:
+  - Codegen strips string quotes from static `on*` values and emits `on: { eventName: function($event){...} }`
+  - Handler runs inside `with(window.__handlerScope(scope))` — a proxy with `has(){return true}` so assignments like `editing = true` are captured by the scope proxy
+  - `this` in snabbdom handlers is the vnode, not the DOM element; codegen uses `this.elm||this` to get the actual element
+  - `window.__findScopeProxy(elm)` walks up the DOM from the clicked element to find the nearest scope proxy
+  - `window.__rerenderOnEvent(elm)` triggers a re-render of the owning scoped region; always re-renders (nested mutations like `$page.editing = true` bypass the dirty flag)
+  - `__rerendering` flag prevents template re-initialization (e.g., `editing = false`) from overwriting event-handler-set values during re-render
+  - `<a>` tags without `href` get `href=""` auto-added; empty `href` clicks are intercepted without navigation
+- Component tags — hyphenated tags like `<my-card>` resolve to `.pug` files and render as browser custom elements:
+  - Compiler emits `pug_pages.__paths` (map of page URL → module ID) in the bundle via `bundleModules()`
+  - Codegen builds `__pagePaths` Set from `pug_pages.__paths`; `isHyphenated()`, `couldMatchComponent()`, and `HTML_TAGS` determine tag handling
+  - Hyphenated tags matching a `.pug` file get `__attrs`/`__content` snabbdom create hooks (copies VDOM data to DOM element properties); `childrenExpr=""` after `__content` capture prevents snabbdom DOM corruption
+  - Non-hyphenated tags matching a `.pug` file emit a compiler warning (not a component)
+  - Runtime `__registerComponents()` registers custom elements via `__createComponentClass()` — light DOM only, no `attachShadow()`
+  - Runtime `__resolveComponentTemplate()` resolves templates URL-relative first (`dir + compName`), then falls back to `/components/ + compName`
+  - `customElements.get()` guard prevents double-registration with warning
 
 Compiler and runtime ownership:
   - Compiler behavior belongs in `src/compiler.ts` and `src/compiler/`
@@ -63,8 +78,8 @@ Declarative test runner (`src/test.ts`):
 ## Documentation Checklist
 
 After implementing a feature or bug fix:
-- Update `README.md` when end-user behavior, CLI usage, or public template/runtime features change.
-- Update `AGENTS.md` when architecture, workflow, ownership boundaries, or notable technical decisions change.
+- Update `README.md` when end-user behavior, CLI usage, or public template/runtime features change. This document is enduser focus.
+- Update `AGENTS.md` when architecture, workflow, ownership boundaries, or notable technical decisions change. This document is developer or agent focus
 
 ## Commit & Pull Request Guidelines
 

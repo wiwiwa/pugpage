@@ -20,18 +20,20 @@ export async function startDevServer(opts: {
   watch?: boolean;
   proxyTarget?: string;
   staticDir?: string;
+  quiet?: boolean;
 }) {
   const proxyTarget = opts.proxyTarget ?? "http://localhost:8080";
-  console.log(`Starting development server in ${opts.root} on port ${opts.port} ...`);
-  console.log(`API proxy → ${proxyTarget}`);
-  if (opts.staticDir) {
-    console.log(`Static dir → ${opts.staticDir}`);
+  if (!opts.quiet) {
+    console.log(`Starting development server in ${opts.root} on port ${opts.port} ...`);
+    console.log(`API proxy → ${proxyTarget}`);
   }
+  if (opts.staticDir && !opts.quiet)
+    console.log(`Static dir → ${opts.staticDir}`);
   const root = opts.root;
 
   if (opts.watch) await ensureIndexHtml(root);
 
-  const server = Deno.serve({ port: opts.port }, async (req: Request) => {
+  const server = Deno.serve({ port: opts.port, onListen: opts.quiet ? () => {} : undefined }, async (req: Request) => {
     const url = new URL(req.url);
 
     if (req.headers.get("upgrade")?.toLowerCase() === "websocket")
@@ -64,7 +66,7 @@ export async function startDevServer(opts: {
     const resp = await serveDir(req, { fsRoot: root, quiet: true });
     if (resp.status !== 404 && resp.status !== 405) return resp;
     if (opts.staticDir) {
-      const staticResp = await serveDir(req, { fsRoot: opts.staticDir });
+      const staticResp = await serveDir(req, { fsRoot: opts.staticDir, quiet: opts.quiet });
       if (staticResp.status !== 404 && staticResp.status !== 405) return staticResp;
     }
     if (req.headers.get("accept")?.includes("text/html")) return await indexResponse(root);
@@ -73,8 +75,8 @@ export async function startDevServer(opts: {
   });
 
   if (opts.watch) {
-    watchAndReload(opts.root);
-    if (opts.staticDir) watchAndReload(opts.staticDir);
+    watchAndReload(opts.root, opts.quiet);
+    if (opts.staticDir) watchAndReload(opts.staticDir, opts.quiet);
   }
   return server;
 }
@@ -98,14 +100,14 @@ function livereloadSSE(): Response {
   );
 }
 
-async function watchAndReload(dir: string) {
+async function watchAndReload(dir: string, quiet?: boolean) {
   const watcher = Deno.watchFs(dir);
   for await (const event of watcher) {
     switch (event.kind) {
       case "modify":
       case "create":
       case "remove":
-        console.log(`Change detected: ${event.paths.join(", ")}`);
+        if (!quiet) console.log(`Change detected: ${event.paths.join(", ")}`);
         for (const send of livereloadClients) send("reload");
     }
   }

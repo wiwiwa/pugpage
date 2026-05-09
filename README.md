@@ -2,10 +2,14 @@ PugPage is a command-line tool for bundling and serving Pug files, enabling rapi
 
 # Features
 
-- **Custom Element `pug-page`**
-  - Usage: `pug-page(src='user.pug' rest='/api/user/1000')`
-  - `src`: Pug template to render
-  - `rest`: RESTful JSON resource for rendering
+- **Custom Element
+  - **`pug-page`**
+    - Usage: `pug-page(src='user.pug' rest='/api/user/1000')`
+    - `src`: Pug template to render
+    - `rest`: RESTful JSON resource for rendering
+  - Pug page `*-*.pug` as custom tag:
+    - Custom tag are resolved at the dir of parent .pug file, or `/compoents`
+      - e.g. `my-tag` is equivelent with `pug-page(src='my-tag.pug')` or `pug-page(src='/component/my-tag.pug')`, if either one exists
 - **Form Handling**
   - Usage `form(rest='/api/profile' action='/api/user/1' href='/user/1')` — fetches initial data from `rest`, submit to `action`, redirect to `href`.
     - both `rest` and `action` updates scope data

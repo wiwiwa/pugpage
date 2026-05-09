@@ -5,9 +5,10 @@ pug-page(rest=`/$$dev/api/user/${$args[0]}`)
     li User ID: #{id}
     li User Name: #{name}
     li User Email: #{email}
-    a(href="#" onclick="editing=!editing") Edit
+    a.user-edit(onclick="editing=!editing") Edit
   if editing
-    h3 Edit User
+    page-dialog(title="Edit User")
+      user-edit
 
 :sass
   .sass-card

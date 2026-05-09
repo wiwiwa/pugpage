@@ -32,8 +32,11 @@ user:
   - goto: /user/1000
     has:
       li: demo
-    no: :Edit User
-  edit user onclick:
-  - click: {a: Edit}
+    no: user-edit
+  edit user in dialog:
+  - click:
+      a: Edit
     has:
-      h3: Edit User
+    - page-dialog
+    - div.user-edit
+    - h3: Edit User

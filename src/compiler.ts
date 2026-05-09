@@ -28,6 +28,13 @@ export async function compileDirectory(
   const layoutMap: Record<string, string | null> = {};
   const layoutChain: Record<string, string | null> = {};
 
+  const pagePaths = new Set<string>();
+  for await (const entry of walk(dirPath, { exts: ["pug"] })) {
+    if (entry.isDirectory) continue;
+    const absPath = Deno.realPathSync(entry.path);
+    pagePaths.add(toUrlPath(absPath, base));
+  }
+
   for await (const entry of walk(dirPath, { exts: ["pug"] })) {
     if (entry.isDirectory) continue;
 
@@ -35,7 +42,7 @@ export async function compileDirectory(
     const urlPath = toUrlPath(absPath, base);
 
     const source = await Deno.readTextFile(absPath);
-    const { code, extendsPath } = compileModule(source, absPath, base);
+    const { code, extendsPath } = compileModule(source, absPath, base, pagePaths);
     modules.push({ path: urlPath, code });
 
     const resolvedLayout = extendsPath === "NONE"
@@ -80,6 +87,7 @@ function compileModule(
   source: string,
   absPath: string,
   base: string,
+  pagePaths: Set<string>,
 ): ModuleCompileResult {
   const tokens = pugLex(source, { filename: absPath });
   const parsed = pugParse(tokens, { filename: absPath, src: source });
@@ -142,6 +150,7 @@ ${cases}
   return result;
 }
 pug_pages.__cache = {};
+pug_pages.__paths = ${JSON.stringify(modules.map(m => m.path))};
 Object.assign(window, { pug_pages, __s, __v, pug_layout_map, pug_layout_chain });
 await import("${renderUrl}");
 `;

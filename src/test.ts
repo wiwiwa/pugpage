@@ -163,12 +163,12 @@ async function runActionGroup(
           for (const t of Array.isArray(texts) ? texts : [texts]) {
             const count = await page.locator(sel).filter({ hasText: t }).count();
             if (count > 0) return `${label}: expected "${sel}" with text "${t}" not to exist, found ${count}`;
-          }
+            }
         } else {
           const count = await page.locator(sel).count();
           if (count > 0) return `${label}: expected "${sel}" not to exist, found ${count}`;
+          }
         }
-      }
       return null;
     },
   };
@@ -209,6 +209,7 @@ export async function runTests(opts: RunTestsOptions): Promise<boolean> {
     watch: false,
     proxyTarget: opts.proxyTarget,
     staticDir: opts.staticDir,
+    quiet: true,
   });
   const { port } = server.addr as Deno.NetAddr;
   const baseUrl = `http://localhost:${port}`;

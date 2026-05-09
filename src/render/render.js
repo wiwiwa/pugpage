@@ -106,12 +106,10 @@ function __rerenderOnEvent(elm) {
   var el = elm;
   while (el) {
     if (el.__scope && el.__tpl) {
-      if (el.__scope.isDirty()) {
-        el.__scope.clearDirty();
-        __rerendering = true;
-        try { renderScope(el, el.__tpl, el.__scope); }
-        finally { __rerendering = false; }
-      }
+      el.__scope.clearDirty();
+      __rerendering = true;
+      try { renderScope(el, el.__tpl, el.__scope); }
+      finally { __rerendering = false; }
       return;
     }
     el = el.parentElement;
@@ -373,7 +371,14 @@ class PugPageElement extends HTMLElement {
         renderScope(this, this.__tpl, this.__scope);
       }
     } else if (src) {
-      var pageFn = pug_pages(src);
+      var resolvedSrc = src;
+      if (src.charAt(0) !== "/") {
+        var currentPath = window.location.pathname;
+        var dir = currentPath.substring(0, currentPath.lastIndexOf("/") + 1);
+        resolvedSrc = dir + src;
+      }
+      if (resolvedSrc.endsWith(".pug")) resolvedSrc = resolvedSrc.slice(0, -4);
+      var pageFn = pug_pages(resolvedSrc);
       if (pageFn) {
         var vnode = pageFn(this.__scope.scope);
         if (this._childVdom) {
@@ -391,6 +396,77 @@ class PugPageElement extends HTMLElement {
 
 // === Event Listeners ===
 customElements.define("pug-page", PugPageElement);
+
+// === Component Registration ===
+function __resolveComponentTemplate(compName) {
+  var currentPath = window.location.pathname;
+  var dir = currentPath.substring(0, currentPath.lastIndexOf("/") + 1);
+  var localPath = dir + compName;
+  var tplFn = pug_pages(localPath);
+  if (tplFn) return tplFn;
+  tplFn = pug_pages("/components/" + compName);
+  return tplFn;
+}
+
+function __registerComponents() {
+  if (!pug_pages.__paths) return;
+  var paths = pug_pages.__paths;
+  var registered = {};
+  for (var i = 0; i < paths.length; i++) {
+    var parts = paths[i].split("/");
+    var name = parts[parts.length - 1];
+    if (name.indexOf("-") === -1) continue;
+    if (registered[name]) continue;
+    registered[name] = true;
+    if (customElements.get(name)) {
+      console.warn("PugPage warning: skipped component registration for <" + name + "> because it is already defined.");
+      continue;
+    }
+    customElements.define(name, __createComponentClass(name));
+  }
+}
+
+function __createComponentClass(compName) {
+  return class extends HTMLElement {
+    constructor() {
+      super();
+      this._childVdom = null;
+      this._rendered = false;
+    }
+    connectedCallback() {
+      if (this._rendered) return;
+      this._rendered = true;
+      this._render();
+    }
+    _render() {
+      var tplFn = __resolveComponentTemplate(compName);
+      if (!tplFn) return;
+      var scope = {
+        $user: window.$user,
+        $page: window.__pugpage_page || {}
+      };
+      if (this.__pugpage_attrs) {
+        for (var k in this.__pugpage_attrs) {
+          scope[k] = this.__pugpage_attrs[k];
+        }
+      }
+      scope.__content = this.__pugpage_content || null;
+      try {
+        var vnode = tplFn(scope);
+      } catch (e) {
+        console.error("PugPage component render error <" + compName + ">:", e);
+        return;
+      }
+      if (Array.isArray(vnode)) vnode = h("div", vnode);
+      this.innerHTML = "";
+      var mount = document.createElement("div");
+      this.appendChild(mount);
+      this._childVdom = __patch(mount, vnode || h("div"));
+    }
+  };
+}
+
+__registerComponents();
 
 window.addEventListener("popstate", onUrlChange);
 
@@ -419,7 +495,7 @@ function __boot() {
     if (target.origin !== window.location.origin) return;
     event.preventDefault();
     var href = target.getAttribute("href");
-    if (href.charAt(0) !== "#")
+    if (href && href.charAt(0) !== "#")
       navigateToUrl(target.href);
   });
 
