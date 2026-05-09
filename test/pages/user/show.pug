@@ -1,9 +1,13 @@
 pug-page(rest=`/$$dev/api/user/${$args[0]}`)
+  - editing = false
   .sass-card
     h2.sass-title User Details
     li User ID: #{id}
     li User Name: #{name}
     li User Email: #{email}
+    a(href="#" onclick="editing=!editing") Edit
+  if editing
+    h3 Edit User
 
 :sass
   .sass-card

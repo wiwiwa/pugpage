@@ -54,16 +54,24 @@ window.$user = {
     this.lang = null;
     this.loginUrl = "/login";
     __clearAuthStorage();
-    window.location.assign(url);
+    window.navigateTo(url);
   }
 };
 
 // === Reactive Scope ===
+var __rerendering = false;
+
 function createScope(initial) {
   var dirty = false;
   var scope = new Proxy(Object.create(null), {
-    get(target, prop) { return target[prop]; },
+    get(target, prop) {
+      if (Object.prototype.hasOwnProperty.call(target, prop))
+        return target[prop];
+      if (prop in window) return window[prop];
+    },
     set(target, prop, value) {
+      if (__rerendering && Object.prototype.hasOwnProperty.call(target, prop))
+        return true;
       if (target[prop] !== value) {
         target[prop] = value;
         dirty = true;
@@ -78,6 +86,38 @@ function createScope(initial) {
     clearDirty() { dirty = false; }
   };
 }
+
+function __findScopeProxy(elm) {
+  var el = elm;
+  while (el) {
+    if (el.__scope) return el.__scope.scope;
+    el = el.parentElement;
+  }
+  return null;
+}
+window.__findScopeProxy = __findScopeProxy;
+
+function __handlerScope(scope) {
+  return new Proxy(scope, { has() { return true; } });
+}
+window.__handlerScope = __handlerScope;
+
+function __rerenderOnEvent(elm) {
+  var el = elm;
+  while (el) {
+    if (el.__scope && el.__tpl) {
+      if (el.__scope.isDirty()) {
+        el.__scope.clearDirty();
+        __rerendering = true;
+        try { renderScope(el, el.__tpl, el.__scope); }
+        finally { __rerendering = false; }
+      }
+      return;
+    }
+    el = el.parentElement;
+  }
+}
+window.__rerenderOnEvent = __rerenderOnEvent;
 
 function renderScope(element, tplFn, scopeTracker) {
   try {
@@ -372,15 +412,15 @@ window.addEventListener("replacestate", onUrlChange);
 // === Initialize ===
 function __boot() {
   document.body.addEventListener("click", function (event) {
+    if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
     var target = event.target.closest("a");
-    if (
-      target &&
-      target.hasAttribute("href") &&
-      target.origin === window.location.origin
-    ) {
-      event.preventDefault();
+    if (!target || !target.hasAttribute("href")) return;
+    if (target.getAttribute("target") === "_blank") return;
+    if (target.origin !== window.location.origin) return;
+    event.preventDefault();
+    var href = target.getAttribute("href");
+    if (href.charAt(0) !== "#")
       navigateToUrl(target.href);
-    }
   });
 
   document.body.addEventListener("submit", async function (event) {

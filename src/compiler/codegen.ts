@@ -237,6 +237,7 @@ function generateTag(node: PugASTNode): string {
   let selector = node.name!;
   const attrEntries: string[] = [];
   const dynamicClassEntries: string[] = [];
+  const eventEntries: string[] = [];
   let roleCond = "";
   let langCond = "";
 
@@ -261,6 +262,10 @@ function generateTag(node: PugASTNode): string {
       } else {
         attrEntries.push(`id: ${a.val}`);
       }
+    } else if (a.name.length > 2 && a.name.startsWith("on")) {
+      const evtName = a.name.charAt(2).toLowerCase() + a.name.slice(3);
+      const handlerCode = isStaticString(a.val) ? extractString(a.val) : a.val;
+      eventEntries.push(`${evtName}: function($event){var __elm=this.elm||this;var __s=window.__findScopeProxy(__elm);try{if(__s){with(window.__handlerScope(__s)){${handlerCode}}}else{${handlerCode}}}catch(e){console.error("PugPage event handler error:",e)}window.__rerenderOnEvent(__elm)}`);
     } else {
       if (isStaticString(a.val)) {
         attrEntries.push(`${a.name}: ${a.val}`);
@@ -273,6 +278,7 @@ function generateTag(node: PugASTNode): string {
   const dataParts: string[] = [];
   if (attrEntries.length > 0) dataParts.push(`attrs: { ${attrEntries.join(", ")} }`);
   if (dynamicClassEntries.length > 0) dataParts.push(`class: { ${dynamicClassEntries.join(", ")} }`);
+  if (eventEntries.length > 0) dataParts.push(`on: { ${eventEntries.join(", ")} }`);
 
   const blockResult = node.block ? generateBlock(node.block) : { exprs: [] as string[], stmts: [] as string[] };
 
@@ -286,7 +292,7 @@ function generateTag(node: PugASTNode): string {
     const innerRet = blockResult.exprs.length === 1
       ? `return ${blockResult.exprs[0]};`
       : `return [${blockResult.exprs.join(", ")}];`;
-    childrenExpr = `(function() { ${innerStmts} ${innerRet} })()`;
+    childrenExpr = `(function(__d) { with(window.__handlerScope(__d)) { ${innerStmts} ${innerRet} } })(data)`;
   }
 
   const hasRest = node.attrs?.some((a) => (a as { name: string }).name === "rest");
@@ -295,7 +301,7 @@ function generateTag(node: PugASTNode): string {
   const needsTpl = (node.name === "pug-page" && hasRest) ||
     (node.name === "form" && (hasRest || (hasAction && hasHref)));
   if (needsTpl && childrenExpr) {
-    dataParts.push(`__tpl: function(__d){with(__d){return ${childrenExpr}}}`);
+    dataParts.push(`__tpl: function(data){with(data){return ${childrenExpr}}}`);
     dataParts.push(`hook: { create(_,vn){vn.elm.__tpl=vn.data.__tpl; vn.elm.__needsScope=true} }`);
     childrenExpr = "";
   }
