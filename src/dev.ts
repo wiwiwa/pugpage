@@ -2,7 +2,39 @@ import { serveDir } from "@std/http/file-server";
 import { compileDirectory } from "./compiler.ts";
 import { ensureIndexHtml } from "./dist.ts";
 
-let livereloadClients: Array<(msg: string) => void> = [];
+type LiveReloadClient = {
+  send: (msg: string) => void;
+  close: () => void;
+};
+
+let livereloadClients: LiveReloadClient[] = [];
+
+const reloadIdleMs = 300;
+let lastUpdateTime = 0;
+
+function scheduleReload() {
+  if (lastUpdateTime === 0) setTimeout(reloadIfIdle, reloadIdleMs);
+  lastUpdateTime = Date.now();
+}
+
+function reloadIfIdle() {
+  const remaining = reloadIdleMs - (Date.now() - lastUpdateTime);
+  if (remaining > 0) {
+    setTimeout(reloadIfIdle, remaining);
+    return;
+  }
+  lastUpdateTime = 0;
+  sendReloadAndCloseClients();
+}
+
+function sendReloadAndCloseClients() {
+  const clients = livereloadClients;
+  livereloadClients = [];
+  for (const client of clients) {
+    client.send("reload");
+    client.close();
+  }
+}
 
 async function readRenderJs(): Promise<string> {
   const url = new URL("./render/render.js", import.meta.url);
@@ -82,21 +114,27 @@ export async function startDevServer(opts: {
 }
 
 function livereloadSSE(): Response {
-  let send: (msg: string) => void;
+  let client: LiveReloadClient;
   const stream = new ReadableStream({
     start(controller) {
-      send = (msg: string) => {
-        try{ controller.enqueue(`data: ${msg}\n\n`);}
-        catch(_e){/* ignore */}
+      client = {
+        send: (msg: string) => {
+          try { controller.enqueue(`data: ${msg}\n\n`); }
+          catch (_e) { /* ignore */ }
+        },
+        close: () => {
+          try { controller.close(); }
+          catch (_e) { /* ignore */ }
+        },
       };
-      livereloadClients.push(send);
+      livereloadClients.push(client);
     },
     cancel() {
-      livereloadClients = livereloadClients.filter((s) => s !== send);
-    }
+      livereloadClients = livereloadClients.filter((c) => c !== client);
+    },
   });
   return new Response(stream.pipeThrough(new TextEncoderStream()),
-    { headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' } }
+    { headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache" } }
   );
 }
 
@@ -108,7 +146,8 @@ async function watchAndReload(dir: string, quiet?: boolean) {
       case "create":
       case "remove":
         if (!quiet) console.log(`Change detected: ${event.paths.join(", ")}`);
-        for (const send of livereloadClients) send("reload");
+        scheduleReload();
+        break;
     }
   }
 }

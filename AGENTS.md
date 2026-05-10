@@ -92,7 +92,7 @@ Pull requests should include a short description, the commands run, and any rele
 1. Build minified runtime: `deno bundle --minify -o ./release/render.min.js ./src/render/render.js`
 2. Update `version` in `deno.json`
 3. Run verification: `deno test --allow-all --no-check` and `deno publish --dry-run`
-4. Add built `render.min.js` and `deno.json` to git by amending last commit
+4. Amend previous commit with version bump: `git add deno.json && git commit --amend --no-edit`
 5. Tag new version by increasing major, minor, or patch version
 6. Double confirm before pushing
 7. Push branch and tag; `.github/workflows/publish-jsr.yml` publishes to JSR from the tag using GitHub OIDC
