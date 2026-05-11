@@ -6,4 +6,9 @@ pug-page(rest='/$$dev/api/login')
     - $user.roles = roles
     a.logout(href="#" onclick="$user.logout()") Logout #{name}
 
+- name="xxx"
+.test
+  a.test(onclick="name='changed'") Click
+  div.name #{name}
+
 slot

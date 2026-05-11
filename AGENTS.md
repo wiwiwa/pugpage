@@ -18,13 +18,14 @@ Use Deno imports from `deno.json`; avoid adding npm scripts unless the project i
 
 The browser runtime exposes:
 - `window.$user` — public auth API with fields (`name`, `roles`, `lang`, `loginUrl`), `setAuthHeader(value, persistent)`, and `logout()`
-- Reactive scope — shared by `<pug-page>` and `<form>`:
+- Reactive scope — shared by `<pug-page>`, `<form>`, and layout templates:
   - Proxy-based object with dirty-bit tracking; scope changes trigger VDOM re-render
   - Each element has its own isolated scope (`$rest`, `$user`, `$page` + fetched data)
   - Scope isolation: the `createScope` proxy has `has() { return true; }` so `with(scope)` never falls through to the enclosing closure scope — only own properties and `window` globals are accessible
   - Codegen skips outer `with(data)` in `__tpl` when stmts exist (the IIFE path already uses `with(window.__handlerScope(__d))` for isolation; outer `with(data)` would shadow the `data` parameter)
   - `$rest` is `null` initially, set to `{ status, data }` after fetch
   - On 200: response data also merges into scope; on non-200: only `$rest` available
+  - Layout scope: `div#__pug_layout__` wrapper element with `__scope`/`__tpl`, initialized with `{ $user, $page, __content }`; `composeWithLayout()` is bypassed, `renderScope()` called directly; same-layout navigation updates `__content` without recreating scope; `let`/`var` declarations in layout templates create block-scoped bindings that shadow the scope proxy — use bare assignments (e.g. `- name="xxx"`) to initialize variables on the scope
 - `<pug-page rest=...>` — fetches data on connect, re-renders children with scope
 - `<form>` — two modes:
   - `rest="..."` — fetches initial data on connect, re-renders children

@@ -15,6 +15,8 @@ var __currentLayout = null;
 // Layout metadata from bundle (graceful fallback for test scope)
 var __layout_map = typeof pug_layout_map !== "undefined" ? pug_layout_map : {};
 var __layout_chain = typeof pug_layout_chain !== "undefined" ? pug_layout_chain : {};
+var __layoutWrapper = null;
+var __layoutScopeTracker = null;
 
 // === User State ===
 var __AUTH_SESSION_KEY = "pugpage.authHeader.session";
@@ -319,21 +321,42 @@ function onUrlChange() {
 
   var targetLayout = __layout_map[resolvedPath] || null;
 
-  if (targetLayout && targetLayout === __currentLayout) {
-    var contentContainer = document.getElementById("__pug_content__");
-    if (contentContainer) {
-      var pageHtml = pageFn(pageArgs);
-      var newContent = h("div#__pug_content__", {}, pageHtml);
-      __patch(contentContainer.__vnode || contentContainer, newContent);
+  if (targetLayout && targetLayout === __currentLayout && __layoutWrapper && __layoutScopeTracker) {
+    // Same-layout: update content in existing layout scope
+    __layoutScopeTracker.scope.__content = pageFn(pageArgs);
+    __layoutScopeTracker.clearDirty();
+    renderScope(__layoutWrapper, __layoutWrapper.__tpl, __layoutScopeTracker);
+    __initScopedForms(document.body);
+    return;
+  }
+
+  __currentLayout = targetLayout;
+
+  if (targetLayout) {
+    var layoutFn = pug_pages(targetLayout);
+    if (layoutFn) {
+      if (!__layoutWrapper) {
+        __layoutWrapper = document.createElement("div");
+        __layoutWrapper.id = "__pug_layout__";
+        document.body.appendChild(__layoutWrapper);
+      }
+      __layoutScopeTracker = createScope({ $user: window.$user, $page: pageArgs.$page || {}, __content: pageFn(pageArgs) });
+      __layoutWrapper.__tpl = layoutFn;
+      __layoutWrapper.__scope = __layoutScopeTracker;
+      renderScope(__layoutWrapper, __layoutWrapper.__tpl, __layoutScopeTracker);
       __initScopedForms(document.body);
       return;
     }
   }
 
-  __currentLayout = targetLayout;
+  // No layout: clean up layout wrapper, use renderPage
+  if (__layoutWrapper) {
+    __layoutWrapper.remove();
+    __layoutWrapper = null;
+    __layoutScopeTracker = null;
+  }
   var pageHtml = pageFn(pageArgs);
-  var composedHtml = composeWithLayout(pageHtml, targetLayout);
-  renderPage(composedHtml);
+  renderPage(pageHtml);
   __initScopedForms(document.body);
 }
 
