@@ -64,6 +64,7 @@ var __rerendering = false;
 function createScope(initial) {
   var dirty = false;
   var scope = new Proxy(Object.create(null), {
+    has() { return true; },
     get(target, prop) {
       if (Object.prototype.hasOwnProperty.call(target, prop))
         return target[prop];

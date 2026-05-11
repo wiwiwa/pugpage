@@ -310,7 +310,12 @@ function generateTag(node: PugASTNode): string {
   const needsTpl = (node.name === "pug-page" && hasRest) ||
     (node.name === "form" && (hasRest || (hasAction && hasHref)));
   if (needsTpl && childrenExpr) {
-    dataParts.push(`__tpl: function(data){with(data){return ${childrenExpr}}}`);
+    // stmts path uses its own with(__handlerScope(__d)) — outer with(data) would shadow 'data'
+    const hasOwnScope = blockResult.stmts.length > 0;
+    const tplWrapper = hasOwnScope
+      ? `__tpl: function(data){return ${childrenExpr}}`
+      : `__tpl: function(data){with(data){return ${childrenExpr}}}`;
+    dataParts.push(tplWrapper);
     dataParts.push(`hook: { create(_,vn){vn.elm.__tpl=vn.data.__tpl; vn.elm.__needsScope=true} }`);
     childrenExpr = "";
   }
