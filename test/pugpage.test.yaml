@@ -40,3 +40,7 @@ user:
     - page-dialog
     - div.user-edit
     - h3: Edit User
+    - a.close-btn: X
+  - click: a.close-btn
+    no:
+      div.user-edit

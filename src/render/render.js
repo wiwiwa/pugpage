@@ -465,27 +465,20 @@ function __createComponentClass(compName) {
     _render() {
       var tplFn = __resolveComponentTemplate(compName);
       if (!tplFn) return;
-      var scope = {
+      var initial = {
         $user: window.$user,
         $page: window.__pugpage_page || {}
       };
       if (this.__pugpage_attrs) {
         for (var k in this.__pugpage_attrs) {
-          scope[k] = this.__pugpage_attrs[k];
+          initial[k] = this.__pugpage_attrs[k];
         }
       }
-      scope.__content = this.__pugpage_content || null;
-      try {
-        var vnode = tplFn(scope);
-      } catch (e) {
-        console.error("PugPage component render error <" + compName + ">:", e);
-        return;
-      }
-      if (Array.isArray(vnode)) vnode = h("div", vnode);
-      this.innerHTML = "";
-      var mount = document.createElement("div");
-      this.appendChild(mount);
-      this._childVdom = __patch(mount, vnode || h("div"));
+      initial.__content = this.__pugpage_content || null;
+      this.__tpl = tplFn;
+      this.__scope = createScope(initial);
+      renderScope(this, this.__tpl, this.__scope);
+      __initScopedForms(this);
     }
   };
 }

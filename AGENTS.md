@@ -18,7 +18,7 @@ Use Deno imports from `deno.json`; avoid adding npm scripts unless the project i
 
 The browser runtime exposes:
 - `window.$user` — public auth API with fields (`name`, `roles`, `lang`, `loginUrl`), `setAuthHeader(value, persistent)`, and `logout()`
-- Reactive scope — shared by `<pug-page>`, `<form>`, and layout templates:
+- Reactive scope — shared by `<pug-page>`, `<form>`, layout templates, and component tags:
   - Proxy-based object with dirty-bit tracking; scope changes trigger VDOM re-render
   - Each element has its own isolated scope (`$rest`, `$user`, `$page` + fetched data)
   - Scope isolation: the `createScope` proxy has `has() { return true; }` so `with(scope)` never falls through to the enclosing closure scope — only own properties and `window` globals are accessible
@@ -26,6 +26,7 @@ The browser runtime exposes:
   - `$rest` is `null` initially, set to `{ status, data }` after fetch
   - On 200: response data also merges into scope; on non-200: only `$rest` available
   - Layout scope: `div#__pug_layout__` wrapper element with `__scope`/`__tpl`, initialized with `{ $user, $page, __content }`; `composeWithLayout()` is bypassed, `renderScope()` called directly; same-layout navigation updates `__content` without recreating scope; `let`/`var` declarations in layout templates create block-scoped bindings that shadow the scope proxy — use bare assignments (e.g. `- name="xxx"`) to initialize variables on the scope
+  - Component scope: `__createComponentClass._render()` creates scope via `createScope()` with `{ $user, $page, __attrs..., __content }`; stores `__tpl` and `__scope` on the element; calls `renderScope()` and `__initScopedForms()` — event handlers inside components find scope via `__findScopeProxy()` DOM walk, same as pug-page/form
 - `<pug-page rest=...>` — fetches data on connect, re-renders children with scope
 - `<form>` — two modes:
   - `rest="..."` — fetches initial data on connect, re-renders children
@@ -86,6 +87,7 @@ After implementing a feature or bug fix:
 
 ## Commit & Pull Request Guidelines
 
+Always create ONE commit for a single requirement or bug fix — combine runtime, tests, docs, and release artifact changes into a single atomic commit.
 Recent commits use scoped, imperative messages such as `dev: fix: auto-inject livereload script` and `render: fix: forms should be summitted with urlencoded, by default`. Keep the first segment tied to the affected area (`dev`, `render`, `compiler`, `dist`) and state the behavior change clearly.
 
 Pull requests should include a short description, the commands run, and any relevant fixture or screenshot notes for browser-visible changes. Link related issues when available and call out release artifact updates to `release/render.min.js`.
