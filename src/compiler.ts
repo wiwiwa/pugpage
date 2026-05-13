@@ -1,6 +1,6 @@
 import { walk } from "@std/fs/walk";
 import { generateCode } from "./compiler/codegen.ts";
-import { findLayouts, resolveLayout, resolveExtendsLayout, toUrlPath, isLayoutFile } from "./compiler/layouts.ts";
+import { findLayouts, resolveLayout, resolveExtendsLayout, toUrlPath, isLayoutFile, isComponentFile } from "./compiler/layouts.ts";
 import { hashString } from "./compiler/css-scope.ts";
 
 import pugLoad from "pug-load";
@@ -45,10 +45,10 @@ export async function compileDirectory(
     const { code, extendsPath } = compileModule(source, absPath, base, pagePaths);
     modules.push({ path: urlPath, code });
 
-    const resolvedLayout = extendsPath === "NONE"
-      ? null
-      : extendsPath
-        ? resolveExtendsLayout(absPath, extendsPath, base)
+    const isComponent = isComponentFile(absPath);
+    const resolvedLayout = isComponent ? null :
+      extendsPath === "NONE" ? null :
+      extendsPath ? resolveExtendsLayout(absPath, extendsPath, base)
         : resolveLayout(absPath, layouts, base);
 
     const layoutTarget = resolvedLayout ? toUrlPath(resolvedLayout, base) : null;
