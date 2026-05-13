@@ -70,3 +70,8 @@ export function toUrlPath(absPath: string, baseDir: string): string {
 export function isLayoutFile(filePath: string): boolean {
   return filePath.endsWith("layout.pug");
 }
+
+export function isComponentFile(filePath: string): boolean {
+  const name = filePath.slice(filePath.lastIndexOf("/") + 1, -4);
+  return name.includes("-");
+}
