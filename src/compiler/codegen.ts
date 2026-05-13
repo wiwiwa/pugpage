@@ -257,6 +257,8 @@ function generateTag(node: PugASTNode): string {
         for (const cls of extractString(a.val).split(/\s+/)) {
           if (cls) selector += "." + cls;
         }
+      } else if (a.val.startsWith("{")) {
+        dynamicClassEntries.push(`...${a.val}`);
       } else {
         dynamicClassEntries.push(`[${a.val}]: true`);
       }
