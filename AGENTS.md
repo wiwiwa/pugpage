@@ -16,51 +16,10 @@ Use Deno imports from `deno.json`; avoid adding npm scripts unless the project i
 
 ## Architecture
 
-The browser runtime exposes:
-- `window.$user` — public auth API with fields (`name`, `roles`, `lang`, `loginUrl`), `setAuthHeader(value, persistent)`, and `logout()`
-- Reactive scope — shared by `<pug-page>`, `<form>`, layout templates, and component tags:
-  - Proxy-based object with dirty-bit tracking; scope changes trigger VDOM re-render
-  - Each element has its own isolated scope (`$rest`, `$user`, `$page` + fetched data)
-  - Scope isolation: the `createScope` proxy has `has() { return true; }` so `with(scope)` never falls through to the enclosing closure scope — only own properties and `window` globals are accessible
-  - Codegen skips outer `with(data)` in `__tpl` when stmts exist (the IIFE path already uses `with(window.__handlerScope(__d))` for isolation; outer `with(data)` would shadow the `data` parameter)
-  - `$rest` is `null` initially, set to `{ status, data }` after fetch
-  - On 200: response data also merges into scope; on non-200: only `$rest` available
-  - Layout scope: `div#__pug_layout__` wrapper element with `__scope`/`__tpl`, initialized with `{ $user, $page, __content }`; `composeWithLayout()` is bypassed, `renderScope()` called directly; same-layout navigation updates `__content` without recreating scope; `let`/`var` declarations in layout templates create block-scoped bindings that shadow the scope proxy — use bare assignments (e.g. `- name="xxx"`) to initialize variables on the scope
-  - Component scope: `__createComponentClass._render()` creates scope via `createScope()` with `{ $user, $page, __attrs..., __content }`; stores `__tpl` and `__scope` on the element; calls `renderScope()` and `__initScopedForms()` — event handlers inside components find scope via `__findScopeProxy()` DOM walk, same as pug-page/form
-- `<pug-page rest=...>` — fetches data on connect, re-renders children with scope
-- `<form>` — two modes:
-  - `rest="..."` — fetches initial data on connect, re-renders children
-  - `action="..." href="..."` — submit → fetch → re-render → navigate to `href`
-  - Both can coexist: `rest` for initial load, `action` for submit
-- Templates handle success/error via `- if($rest)` — no inline `<script>` needed
-- Codegen compiles form children into `__tpl` functions (same as `pug-page`)
-- Reactive event handlers — `on*` attributes compile to snabbdom `on` listeners with scope access:
-  - Codegen strips string quotes from static `on*` values and emits `on: { eventName: function($event){...} }`
-  - Handler runs inside `with(window.__handlerScope(scope))` — a proxy with `has(){return true}` so assignments like `editing = true` are captured by the scope proxy
-  - `this` in snabbdom handlers is the vnode, not the DOM element; codegen uses `this.elm||this` to get the actual element
-  - `window.__findScopeProxy(elm)` walks up the DOM from the clicked element to find the nearest scope proxy
-  - `window.__rerenderOnEvent(elm)` triggers a re-render of the owning scoped region; always re-renders (nested mutations like `$page.editing = true` bypass the dirty flag)
-  - `__rerendering` flag prevents template re-initialization (e.g., `editing = false`) from overwriting event-handler-set values during re-render
-  - `<a>` tags without `href` get `href=""` auto-added; empty `href` clicks are intercepted without navigation
-- Component tags — hyphenated tags like `<my-card>` resolve to `.pug` files and render as browser custom elements:
-  - Compiler emits `pug_pages.__paths` (map of page URL → module ID) in the bundle via `bundleModules()`
-  - Codegen builds `__pagePaths` Set from `pug_pages.__paths`; `isHyphenated()`, `couldMatchComponent()`, and `HTML_TAGS` determine tag handling
-  - Hyphenated tags matching a `.pug` file get `__attrs`/`__content` snabbdom create hooks (copies VDOM data to DOM element properties); `childrenExpr=""` after `__content` capture prevents snabbdom DOM corruption
-  - Non-hyphenated tags matching a `.pug` file emit a compiler warning (not a component)
-  - Runtime `__registerComponents()` registers custom elements via `__createComponentClass()` — light DOM only, no `attachShadow()`
-  - Runtime `__resolveComponentTemplate()` resolves templates URL-relative first (`dir + compName`), then falls back to `/components/ + compName`
-  - `customElements.get()` guard prevents double-registration with warning
-
-Compiler and runtime ownership:
-  - Compiler behavior belongs in `src/compiler.ts` and `src/compiler/`
-  - Browser behavior belongs in `src/render/render.js`; update `release/render.min.js` only when runtime code changes
-  - Do not regenerate `release/render.min.js` for compiler-only changes
-Inline styles:
-  - `style.`, `:scss`, `:sass` are emitted as inline VDOM `h("style", ...)` at their original template position
-  - No bundle-level `document.head` injection — styles live inside the rendered page subtree
-  - Each inline style gets a stable `key` and `data-pugpage-style` attribute for snabbdom patch identity
-  - Duplicate identical blocks are not deduplicated — each can be removed independently by VDOM updates
-  - Sass/SCSS support is compiler-only: `:scss` and `:sass` filters are compiled in `src/compiler/codegen.ts`
+See [Architecture.md](./Architecture.md) for full system design. Key ownership rules:
+- Compiler behavior belongs in `src/compiler.ts` and `src/compiler/`
+- Browser behavior belongs in `src/render/render.js`; update `release/render.min.js` only when runtime code changes
+- Do not regenerate `release/render.min.js` for compiler-only changes
 
 ## Coding Style & Naming Conventions
 

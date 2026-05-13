@@ -8,15 +8,12 @@ var __patch = init([attributesModule, classModule, propsModule, styleModule, eve
 window.h = h;
 
 // === State ===
-var __currentVdom = null;
-var __container = null;
-var __currentLayout = null;
+var __pageRoot = null;
+var __layoutStack = [];
 
 // Layout metadata from bundle (graceful fallback for test scope)
 var __layout_map = typeof pug_layout_map !== "undefined" ? pug_layout_map : {};
 var __layout_chain = typeof pug_layout_chain !== "undefined" ? pug_layout_chain : {};
-var __layoutWrapper = null;
-var __layoutScopeTracker = null;
 
 // === User State ===
 var __AUTH_SESSION_KEY = "pugpage.authHeader.session";
@@ -208,56 +205,38 @@ function __initScopedForms(root) {
   }
 }
 
-// === Mount/Patch Orchestrator (T15) ===
-function renderPage(vnode) {
-  if (!__container) {
-    document.body.innerHTML = "";
-    __container = document.createElement("div");
-    document.body.appendChild(__container);
-    __currentVdom = __patch(__container, vnode);
-  } else {
-    __currentVdom = __patch(__currentVdom, vnode);
+// === Layout Stack ===
+function applyLayout(pageVdom, layoutPath) {
+  for (var i = 0; i < __layoutStack.length; i++) {
+    if (__layoutStack[i].layoutPath === layoutPath) {
+      __layoutStack.length = i + 1;
+      return __layoutStack[i];
+    }
   }
-}
-
-// === Layout Composition (T18) ===
-function composeWithLayout(contentVnode, layoutPath) {
-  if (!layoutPath) return contentVnode;
-  var layoutFn = pug_pages(layoutPath);
-  if (!layoutFn) return contentVnode;
 
   var parentLayout = __layout_chain[layoutPath] || null;
-  var innerContent = layoutFn({ __content: contentVnode });
+  var content = parentLayout ? applyLayout(pageVdom, parentLayout).scope.__content : pageVdom;
 
-  return composeWithLayout(innerContent, parentLayout);
+  var layoutFn = pug_pages(layoutPath);
+  var scopeTracker = createScope({ $user: window.$user, __content: content });
+  var entry = { layoutPath: layoutPath, scope: scopeTracker, tplFn: layoutFn };
+  __layoutStack.push(entry);
+  return entry;
 }
 
-// === Route Resolver (T16) ===
-var __pageFn = null;
-var __pageArgs = null;
-
-function navigateToUrl(url) {
+window.navigateTo = function (url) {
   var targetUrl = new URL(url, window.location.href);
   if (targetUrl.origin !== window.location.origin) {
     window.location.assign(targetUrl.href);
     return;
   }
-
   history.pushState(null, "", targetUrl.href);
-}
-
-window.navigateTo = function (url) {
-  navigateToUrl(url);
+  onUrlChange();
 };
 
-function onUrlChange() {
-  var url = new URL(window.location.href);
-  var path = url.pathname;
+function resolvePage(path, queryParams) {
   var pageFn = null;
-  var pageArgs = Object.assign(
-    {},
-    Object.fromEntries(url.searchParams.entries()),
-  );
+  var pageArgs = Object.assign({}, queryParams);
 
   if (path.endsWith("/")) pageFn = pug_pages(path + "index");
   if (!pageFn) pageFn = pug_pages(path);
@@ -294,20 +273,26 @@ function onUrlChange() {
       pageArgs.$args = segments;
     }
   }
-  if (!pageFn) return console.info("No Pug page found for path:", path);
+
+  if (!pageFn) return null;
 
   pageArgs.$page = {
     path: path,
     args: pageArgs.$args || [],
-    params: Object.fromEntries(url.searchParams.entries()),
+    params: Object.fromEntries(queryParams.entries()),
   };
 
-  pageArgs.$user = window.$user;
+  return { pageFn: pageFn, pageArgs: pageArgs };
+}
 
-  __pageFn = pageFn;
-  __pageArgs = pageArgs;
+function onUrlChange() {
+  var url = new URL(window.location.href);
+  var path = url.pathname;
+  var resolved = resolvePage(path, url.searchParams);
+  if (!resolved) return console.info("No Pug page found for path:", path);
+  var pageFn = resolved.pageFn;
+  var pageArgs = resolved.pageArgs;
 
-  // T18: Layout composition
   var resolvedPath = null;
   for (var rp in __layout_map) {
     var pageCheck = pug_pages(rp);
@@ -316,47 +301,34 @@ function onUrlChange() {
       break;
     }
   }
-  // Fallback: find the resolved path from URL matching
   if (!resolvedPath) resolvedPath = path;
 
   var targetLayout = __layout_map[resolvedPath] || null;
 
-  if (targetLayout && targetLayout === __currentLayout && __layoutWrapper && __layoutScopeTracker) {
-    // Same-layout: update content in existing layout scope
-    __layoutScopeTracker.scope.__content = pageFn(pageArgs);
-    __layoutScopeTracker.clearDirty();
-    renderScope(__layoutWrapper, __layoutWrapper.__tpl, __layoutScopeTracker);
-    __initScopedForms(document.body);
-    return;
+  if (!__pageRoot) {
+    __pageRoot = document.createElement("div");
+    __pageRoot.id = "__pug_page__";
+    document.body.innerHTML = "";
+    document.body.appendChild(__pageRoot);
   }
 
-  __currentLayout = targetLayout;
+  var pageVdom = pageFn(pageArgs);
 
   if (targetLayout) {
-    var layoutFn = pug_pages(targetLayout);
-    if (layoutFn) {
-      if (!__layoutWrapper) {
-        __layoutWrapper = document.createElement("div");
-        __layoutWrapper.id = "__pug_layout__";
-        document.body.appendChild(__layoutWrapper);
-      }
-      __layoutScopeTracker = createScope({ $user: window.$user, $page: pageArgs.$page || {}, __content: pageFn(pageArgs) });
-      __layoutWrapper.__tpl = layoutFn;
-      __layoutWrapper.__scope = __layoutScopeTracker;
-      renderScope(__layoutWrapper, __layoutWrapper.__tpl, __layoutScopeTracker);
-      __initScopedForms(document.body);
-      return;
-    }
+    var entry = applyLayout(pageVdom, targetLayout);
+    entry.scope.scope.__content = pageVdom;
+    entry.scope.scope.$page = pageArgs.$page || {};
+    entry.scope.clearDirty();
+    __pageRoot.__tpl = entry.tplFn;
+    __pageRoot.__scope = entry.scope;
+  } else {
+    __layoutStack.length = 0;
+    var passScope = createScope({ $user: window.$user, $page: pageArgs.$page || {}, __content: pageVdom });
+    __pageRoot.__tpl = function (scope) { return scope.__content; };
+    __pageRoot.__scope = passScope;
   }
 
-  // No layout: clean up layout wrapper, use renderPage
-  if (__layoutWrapper) {
-    __layoutWrapper.remove();
-    __layoutWrapper = null;
-    __layoutScopeTracker = null;
-  }
-  var pageHtml = pageFn(pageArgs);
-  renderPage(pageHtml);
+  renderScope(__pageRoot, __pageRoot.__tpl, __pageRoot.__scope);
   __initScopedForms(document.body);
 }
 
@@ -368,7 +340,7 @@ class PugPageElement extends HTMLElement {
   }
 
   connectedCallback() {
-    if (this.parentNode === document.body && !__container) return;
+    if (this.parentNode === document.body && !__pageRoot) return;
     if (this._loaded) return;
     this._loaded = true;
     this._load();
@@ -487,21 +459,6 @@ __registerComponents();
 
 window.addEventListener("popstate", onUrlChange);
 
-var _pushState = history.pushState;
-history.pushState = function () {
-  _pushState.apply(this, arguments);
-  window.dispatchEvent(new Event("pushstate"));
-};
-
-var _replaceState = history.replaceState;
-history.replaceState = function () {
-  _replaceState.apply(this, arguments);
-  window.dispatchEvent(new Event("replacestate"));
-};
-
-window.addEventListener("pushstate", onUrlChange);
-window.addEventListener("replacestate", onUrlChange);
-
 // === Initialize ===
 function __boot() {
   document.body.addEventListener("click", function (event) {
@@ -513,7 +470,7 @@ function __boot() {
     event.preventDefault();
     var href = target.getAttribute("href");
     if (href && href.charAt(0) !== "#")
-      navigateToUrl(target.href);
+      window.navigateTo(target.href);
   });
 
   document.body.addEventListener("submit", async function (event) {
@@ -554,7 +511,7 @@ function __boot() {
       }
 
       if (href && res && res.ok) {
-        history.pushState(null, "", href);
+        window.navigateTo(href);
       }
       return;
     }
@@ -594,7 +551,7 @@ function __boot() {
         response.headers.forEach(function(v, k) { detail.headers[k] = v; });
         try { detail.data = await response.json(); } catch (e) { /* ignore */ }
         form.dispatchEvent(new CustomEvent("rest", { detail: detail, bubbles: true }));
-        if (href) history.pushState(null, "", href);
+        if (href) window.navigateTo(href);
       }
     } catch (e) {
       console.error("Form submission error:", e);
