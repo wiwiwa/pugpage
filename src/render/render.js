@@ -335,6 +335,14 @@ function onUrlChange() {
   if (targetLayout) {
     var layoutFn = pug_pages(targetLayout);
     if (layoutFn) {
+      // Clean up content from previous renderPage() call (no-layout → layout transition).
+      // snabbdom replaces __container with the rendered element, so __container is detached.
+      // The actual content is in document.body children.
+      if (__container) {
+        document.body.innerHTML = "";
+        __container = null;
+        __currentVdom = null;
+      }
       if (!__layoutWrapper) {
         __layoutWrapper = document.createElement("div");
         __layoutWrapper.id = "__pug_layout__";
