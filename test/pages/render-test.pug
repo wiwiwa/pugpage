@@ -1,0 +1,14 @@
+pug-page(rest="/$$dev/api/echo")
+  h1 Render Test
+  .rest-status Result: #{result}
+
+  // Component slot update test
+  - slotCount = 0
+  - showSlot = false
+
+  a.toggle-slot(onclick="showSlot=!showSlot") Toggle Slot
+  a.inc-slot(onclick="slotCount=slotCount+1") Inc Slot
+
+  if showSlot
+    render-box(title="Slot Test")
+      p.slot-value count: #{slotCount}

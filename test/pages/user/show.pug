@@ -1,16 +1,9 @@
 pug-page(rest=`/$$dev/api/user/${$args[0]}`)
-  - editing = false
   .sass-card
     h2.sass-title User Details
     li User ID: #{id}
     li User Name: #{name}
     li User Email: #{email}
-    a.user-edit(onclick="editing=!editing") Edit
-  if editing
-    page-dialog(title="Edit User")
-      user-edit
 
-:sass
-  .sass-card
-    .sass-title
-      color: rgb(134, 0, 0)
+:css
+  .sass-card .sass-title { color: rgb(134, 0, 0); }

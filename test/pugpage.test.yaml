@@ -1,3 +1,22 @@
+render:
+  component slot update:
+  - goto: /render-test
+  - has:
+      .rest-status: OK
+  - click:
+      a: Toggle Slot
+  - has:
+    - render-box
+    - p.slot-value: "count: 0"
+  - click: a.inc-slot
+  - has:
+      p.slot-value: "count: 1"
+  - click: a.inc-slot
+  - has:
+      p.slot-value: "count: 2"
+  - click:
+      a: Toggle Slot
+  - no: render-box
 login:
   redirect if not login:
   - goto: /
@@ -33,14 +52,3 @@ user:
     has:
       li: demo
     no: user-edit
-  edit user in dialog:
-  - click:
-      a: Edit
-    has:
-    - page-dialog
-    - div.user-edit
-    - h3: Edit User
-    - a.close-btn: X
-  - click: a.close-btn
-    no:
-      div.user-edit

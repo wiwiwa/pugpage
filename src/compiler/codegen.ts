@@ -71,8 +71,23 @@ function isScopedStyle(node: PugASTNode): boolean {
   return scopedAttr.val !== "false";
 }
 
-function isHyphenated(tagName: string): boolean {
+function isCustomTag(tagName: string): boolean {
   return tagName.includes("-") && tagName !== "pug-page";
+}
+
+function emitCustomTagData(node: PugASTNode, dataParts: string[], blockResult: BlockResult): void {
+  const compAttrs = (node.attrs ?? [])
+    .filter(a => a.name !== "$role" && a.name !== "$lang" && a.name !== "class" && a.name !== "id")
+    .map(a => a.name + ": " + a.val);
+  if (compAttrs.length > 0) {
+    dataParts.push("__attrs: {" + compAttrs.join(", ") + "}");
+  }
+  if (blockResult.exprs.length > 0 || blockResult.stmts.length > 0) {
+    const childrenExpr = blockToExpr(blockResult);
+    dataParts.push("__content: " + childrenExpr);
+  }
+  const syncProps = "vn.elm.__pugpage_attrs=vn.data.__attrs;vn.elm.__pugpage_content=vn.data.__content";
+  dataParts.push(`hook:{create:(_,vn)=>{${syncProps}},update:(_,vn)=>{${syncProps};if(vn.elm._update)vn.elm._update()}}`);
 }
 
 function compileStyleFilter(node: PugASTNode): string {
@@ -322,19 +337,9 @@ function generateTag(node: PugASTNode): string {
     childrenExpr = "";
   }
 
-  if (isHyphenated(node.name!)) {
-    var compAttrs = (node.attrs ?? [])
-      .filter(a => a.name !== "$role" && a.name !== "$lang" && a.name !== "class" && a.name !== "id")
-      .map(a => a.name + ": " + a.val);
-    if (compAttrs.length > 0) {
-      dataParts.push("__attrs: {" + compAttrs.join(", ") + "}");
-    }
-    if (blockResult.exprs.length > 0 || blockResult.stmts.length > 0) {
-      dataParts.push("__content: " + (childrenExpr || "null"));
-      childrenExpr = "";
-    }
-    const hookBody = "(_,vn)=>{vn.elm.__pugpage_attrs=vn.data.__attrs;vn.elm.__pugpage_content=vn.data.__content}";
-    dataParts.push(`hook:{create:${hookBody},update:${hookBody}}`);
+  if (isCustomTag(node.name!)) {
+    emitCustomTagData(node, dataParts, blockResult);
+    childrenExpr = "";
   }
 
   const dataStr = dataParts.length > 0 ? `{ ${dataParts.join(", ")} }` : "";

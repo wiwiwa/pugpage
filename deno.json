@@ -1,6 +1,6 @@
 {
   "name": "@wiwiwa/pugpage",
-  "version": "1.9.7",
+  "version": "1.9.8",
   "license": "MIT",
   "exports": {
     ".": "./src/main.ts"
@@ -12,7 +12,6 @@
     ]
   },
   "imports": {
-    "@playwright/test": "npm:@playwright/test@^1.59.1",
     "@std/cli": "jsr:@std/cli@^1.0",
     "@std/flags": "jsr:@std/flags@^0.224",
     "@std/fs": "jsr:@std/fs@^1.0",
@@ -23,8 +22,7 @@
     "@std/http/file-server": "jsr:@std/http@^1.0/file-server",
     "@std/path": "jsr:@std/path@^1.1.4",
     "@std/yaml": "jsr:@std/yaml@^1.1.0",
-    "playwright": "npm:playwright@^1.59.1",
-    "pug": "npm:pug@^3",
+    "playwright": "npm:playwright@^1.60.0",
     "pug-lexer": "npm:pug-lexer@^5.0.1",
     "pug-linker": "npm:pug-linker@^4.0.0",
     "pug-load": "npm:pug-load@^3.0.0",

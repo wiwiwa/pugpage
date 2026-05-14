@@ -29,7 +29,7 @@ PugPage is a command-line tool and runtime for developing, bundling, and serving
 - `index.html`: Loads the hashed JS file.
 - `bundleJS()`: Concatenates `compileDirectory()` output + `src/render/render.js`.
 
-### PugPage Compiler (`src/compiler.ts` + `src/compiler/`)
+### PugPage Compiler
 
 `compileDirectory(dirPath, opts)`:
 - Walk `dirPath` for all `.pug` files; collect url paths
@@ -40,12 +40,14 @@ PugPage is a command-line tool and runtime for developing, bundling, and serving
     - `pug-load` (resolves `include`/`extends`) → `pug-linker` → linked AST
     - `generateCode(ast, urlPath)` → `{ code, hasScopedStyles }`
     - If `hasScopedStyles`: `wrapWithScope(code, scopeId)` — wraps `return` expr in IIFE that injects `data-scope` attr
-  - Layout resolution:
-    - If component file (hyphenated filename): no layout
-    - Else if `extends NONE`: no layout
-    - Else if `extends "path"`: `resolveExtendsLayout()` — resolve relative to file dir
-    - Else: `resolveLayout()` — walk current → parent dirs for nearest `layout.pug`
-    - Layout files → `layoutChain[url] = target`; page files → `layoutMap[url] = target`
+  - `resolveFileLayout(absPath, extendsPath, layouts, base)` → layout target url or `null`:
+    - If `isComponentFile` (hyphenated filename): `null`
+    - Else if `extends NONE`: `null`
+    - Else if `extends "path"`: `resolveExtendsLayout()`
+      - Resolve relative to page dir, add `.pug` if missing, return if exists
+    - Else: `resolveLayout()`
+      - Start at `dirname(pageAbsPath)`, walk up to `baseDir`, return first `layout.pug` that is not the page itself
+  - Layout files → `layoutChain[url] = target`; page files → `layoutMap[url] = target`
 - `bundleModules(modules, layoutMap, layoutChain, renderUrl)`:
   - Each module → `case '/path': return new Function("data","__s","__v", "with(data){...}")`
   - Emit: `pug_layout_map`, `pug_layout_chain`, `__s()` (null-safe stringify), `__v()` (ReferenceError-safe eval), `pug_pages()` switch/case with `__cache`, `pug_pages.__paths[]`, then `import renderUrl`
@@ -83,10 +85,11 @@ PugPage is a command-line tool and runtime for developing, bundling, and serving
   - with stmts → IIFE with `with(window.__handlerScope(__d))`
 - `needsTpl` (`<pug-page rest>` or `<form rest|action+href>` with children):
   - Wrap children in `__tpl: function(data){ ... }`, emit `create` hook to set `elm.__tpl` and `elm.__needsScope`, clear `childrenExpr`
-- `isHyphenated(tag)` (custom component tag):
-  - Emit `__attrs: { ... }` (non-role/lang/class/id attrs)
-  - Emit `__content: <childrenExpr>` (if children exist), clear `childrenExpr`
-  - Emit `hook: { create: fn, update: fn }` where `fn` syncs `__attrs`/`__content` from vnode data to DOM element
+- `if isCustomTag(tag)` 
+  - `emitCustomTagData(node, dataParts, blockResult)`:
+    - Emit `__attrs: { ... }` (non-role/lang/class/id attrs)
+    - Emit `__content: <childrenExpr>` (via `blockToExpr`, if children exist)
+    - Emit `hook: { create: fn, update: fn }` — `create` syncs `__attrs`/`__content` to element; `update` syncs then calls `elm._update()` to re-render component
 - Assemble `h("selector", data, children)`, wrap in `$role`/`$lang` ternary guard if present
 
 `<style>` handling:
@@ -102,23 +105,6 @@ PugPage is a command-line tool and runtime for developing, bundling, and serving
 - Walk CSS at depth 0; prefix each selector with `[data-scope="<scopeId>"]`
 - Skip `@` at-rules, keyframe percentages (`from`/`to`/`X%`)
 - Split comma-separated selectors; prefix each individually
-
-**Layout Resolution**
-
-`findLayouts(dirPath)`:
-- Walk `dirPath` for files ending `layout.pug`
-- Return `Map<directory, absPath>`
-
-`resolveLayout(pageAbsPath, layouts, baseDir)`:
-- Start at `dirname(pageAbsPath)`, walk up to `baseDir`
-- At each dir: if layout exists and is not the page itself → return it
-
-`resolveExtendsLayout(pageAbsPath, extendsPath, baseDir)`:
-- Resolve `extendsPath` relative to page's directory, add `.pug` if missing
-- Return if file exists, else null
-
-`isComponentFile(filePath)`: filename (without `.pug`) contains `-`
-`isLayoutFile(filePath)`: filename ends with `layout.pug`
 
 ---
 
@@ -183,37 +169,28 @@ Routing triggering:
 
 Hyphenated tags like `<my-card>` resolve to `.pug` files and render as browser custom elements:
 
-**Compile time**
-
-- Codegen `isHyphenated(tag)`: tag name contains `-` and is not `pug-page`
-- For matching tags, emit vnode data:
-  - `__attrs: { name: val, ... }` — all attrs except `$role`, `$lang`, `class`, `id`
-  - `__content: <childrenExpr>` — child vdom expression (if children exist)
-  - `hook: { create: fn, update: fn }` — `fn` copies `vn.data.__attrs` → `elm.__pugpage_attrs` and `vn.data.__content` → `elm.__pugpage_content` on both create and patch
-- `pug_pages.__paths[]` includes all component paths for runtime registration
-- Component `.pug` files (hyphenated filenames) automatically skip layout wrapping
-
 **Runtime**
 
-`__registerComponents()`:
+When module load:
+`__registerComponents()`
 - For each path in `pug_pages.__paths[]`:
-  - If filename contains `-` and not already registered → `customElements.define(name, __createComponentClass(name))`
+  - If filename contains `-` and not already registered 
+    - `customElements.define(name, __createComponentClass(name))`
 
-`__createComponentClass(compName)`:
+`__createComponentClass(compName)` return a class with:
 - `constructor()`: set `_childVdom = null`, `_rendered = false`
 - `connectedCallback()`: if `!_rendered` → `_rendered = true`, `_render()`
 - `_render()`:
-  - `__resolveComponentTemplate(compName)`:
-    - Try `currentDir + compName` via `pug_pages()`
-    - Fallback: `/components/ + compName`
+  - `__resolveComponentTemplate(compName)` → `tplFn`:
+    - Try `currentDir + compName` via `pug_pages()` (URL-relative)
+    - Fallback: `/components/ + compName` via `pug_pages()`
   - Build initial scope: `{ $user, $page, ...__pugpage_attrs, __content: __pugpage_content || null }`
-  - `createScope(initial)` → reactive proxy
+  - `createScope(initial)` → reactive proxy with exposed `target`
   - `renderScope(this, tplFn, scope)` → snabbdom patch into element
   - `__initScopedForms(this)`
-
-`__resolveComponentTemplate(compName)`:
-- Resolve `currentDir + compName` via `pug_pages()` first (URL-relative)
-- Fallback: `/components/ + compName` via `pug_pages()`
+- `_update()`:
+  - Write `__pugpage_attrs` and `__pugpage_content` directly to scope `target` (bypasses `__rerendering` guard on proxy)
+  - `renderScope(this, tplFn, scope)` → re-render component with updated content
 
 ### Public API
 

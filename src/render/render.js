@@ -62,18 +62,19 @@ var __rerendering = false;
 
 function createScope(initial) {
   var dirty = false;
-  var scope = new Proxy(Object.create(null), {
+  var target = Object.create(null);
+  var scope = new Proxy(target, {
     has() { return true; },
-    get(target, prop) {
-      if (Object.prototype.hasOwnProperty.call(target, prop))
-        return target[prop];
+    get(t, prop) {
+      if (Object.prototype.hasOwnProperty.call(t, prop))
+        return t[prop];
       if (prop in window) return window[prop];
     },
-    set(target, prop, value) {
-      if (__rerendering && Object.prototype.hasOwnProperty.call(target, prop))
+    set(t, prop, value) {
+      if (__rerendering && Object.prototype.hasOwnProperty.call(t, prop))
         return true;
-      if (target[prop] !== value) {
-        target[prop] = value;
+      if (t[prop] !== value) {
+        t[prop] = value;
         dirty = true;
       }
       return true;
@@ -82,6 +83,7 @@ function createScope(initial) {
   if (initial) Object.assign(scope, initial);
   return {
     scope,
+    target,
     isDirty() { return dirty; },
     clearDirty() { dirty = false; }
   };
@@ -98,7 +100,12 @@ function __findScopeProxy(elm) {
 window.__findScopeProxy = __findScopeProxy;
 
 function __handlerScope(scope) {
-  return new Proxy(scope, { has() { return true; } });
+  return new Proxy(scope, {
+    has() { return true; },
+    get(target, prop) {
+      return prop in target ? target[prop] : window[prop];
+    }
+  });
 }
 window.__handlerScope = __handlerScope;
 
@@ -451,6 +458,17 @@ function __createComponentClass(compName) {
       this.__scope = createScope(initial);
       renderScope(this, this.__tpl, this.__scope);
       __initScopedForms(this);
+    }
+    _update() {
+      if (!this.__scope) return;
+      var target = this.__scope.target;
+      if (this.__pugpage_attrs) {
+        for (var k in this.__pugpage_attrs) {
+          target[k] = this.__pugpage_attrs[k];
+        }
+      }
+      target.__content = this.__pugpage_content || null;
+      renderScope(this, this.__tpl, this.__scope);
     }
   };
 }

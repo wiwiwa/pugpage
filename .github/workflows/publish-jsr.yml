@@ -28,11 +28,11 @@ jobs:
 
       - name: Install Playwright browsers
         if: steps.playwright-cache.outputs.cache-hit != 'true'
-        run: deno run -A npm:playwright@^1.59.1 install --with-deps chromium
+        run: deno run -A npm:playwright@^1.60.0 install --with-deps chromium
 
       - name: Install Playwright OS deps
         if: steps.playwright-cache.outputs.cache-hit == 'true'
-        run: deno run -A npm:playwright@^1.59.1 install-deps chromium
+        run: deno run -A npm:playwright@^1.60.0 install-deps chromium
 
       - name: Verify tag matches deno.json version
         run: |
@@ -47,7 +47,7 @@ jobs:
         run: deno test --allow-all --no-check
 
       - name: Publish dry run
-        run: deno publish --dry-run
+        run: deno publish --allow-dirty --dry-run
 
       - name: Publish
-        run: deno publish
+        run: deno publish --allow-dirty

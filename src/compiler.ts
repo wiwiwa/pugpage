@@ -45,14 +45,7 @@ export async function compileDirectory(
     const { code, extendsPath } = compileModule(source, absPath, base, pagePaths);
     modules.push({ path: urlPath, code });
 
-    const isComponent = isComponentFile(absPath);
-    const resolvedLayout = isComponent ? null :
-      extendsPath === "NONE" ? null :
-      extendsPath ? resolveExtendsLayout(absPath, extendsPath, base)
-        : resolveLayout(absPath, layouts, base);
-
-    const layoutTarget = resolvedLayout ? toUrlPath(resolvedLayout, base) : null;
-
+    const layoutTarget = resolveFileLayout(absPath, extendsPath, layouts, base);
     if (isLayoutFile(absPath)) {
       layoutChain[urlPath] = layoutTarget;
     } else {
@@ -75,6 +68,23 @@ function extractExtendsFromAst(ast: { nodes?: { type: string; file?: { path: str
     }
   }
   return null;
+}
+
+function resolveFileLayout(
+  absPath: string,
+  extendsPath: string | null,
+  layouts: Map<string, string>,
+  base: string,
+): string | null {
+  const isComponent = isComponentFile(absPath);
+  if (isComponent) return null;
+  if (extendsPath === "NONE") return null;
+  if (extendsPath) {
+    const resolved = resolveExtendsLayout(absPath, extendsPath, base);
+    return resolved ? toUrlPath(resolved, base) : null;
+  }
+  const resolved = resolveLayout(absPath, layouts, base);
+  return resolved ? toUrlPath(resolved, base) : null;
 }
 
 function stripExtendsFromAst(ast: { nodes?: { type: string }[] }): void {

@@ -16,6 +16,7 @@ interface ActionGroup {
   wait?: SelectorTarget;
   timeout?: number;
   status?: number;
+  js?: string;
 }
 
 interface TestCase {
@@ -169,6 +170,15 @@ async function runActionGroup(
           if (count > 0) return `${label}: expected "${sel}" not to exist, found ${count}`;
           }
         }
+      return null;
+    },
+    async js(val) {
+      const injected = await page.evaluate(() => "jQuery" in window);
+      if (!injected) {
+        await page.addScriptTag({ url: "https://cdn.jsdelivr.net/npm/jquery@3/dist/jquery.min.js" });
+      }
+      const result = await page.evaluate(val as string);
+      if (result !== undefined) console.log(`  [js] ${JSON.stringify(result)}`);
       return null;
     },
   };
