@@ -29,13 +29,96 @@ PugPage is a command-line tool and runtime for developing, bundling, and serving
 - `index.html`: Loads the hashed JS file.
 - `bundleJS()`: Concatenates `compileDirectory()` output + `src/render/render.js`.
 
-### PugPage Compiler (`src/compiler.ts`)
-- **Pipeline** (`compileDirectory`): For each `.pug` file: read → layout transforms → lex (pug-lexer) → parse (pug-parser) → load (pug-load, resolves includes/extends) → link (pug-linker) → codegen.
-- **Codegen** (`src/compiler/codegen.ts`): Walks the linked pug AST and emits snabbdom `h()` calls. Handles 19 post-linkage node types.
-- **Source transforms** (`src/compiler/transforms.ts`): `$role` and `$lang` attributes are converted to conditional `if` directives before compilation.
-- **Layout auto-application** (`src/compiler/layouts.ts`): Finds nearest `layout.pug` in current/parent directories. Supports `extends NONE` to opt out and layout chaining (parent layouts). Component `.pug` files (hyphenated filenames) automatically skip layout — no `extends NONE` needed.
-- **CSS scoping** (`src/compiler/css-scope.ts`): Extracts `<style>` content, prefixes selectors with `[data-scope="<hash>"]` based on file path.
-- **Bundle emission** (`bundleModules`): Inlines snabbdom source at build time. Emits: inlined snabbdom → `__patch = init([...])` → layout maps → `pug_pages()` switch/case registry.
+### PugPage Compiler (`src/compiler.ts` + `src/compiler/`)
+
+`compileDirectory(dirPath, opts)`:
+- Walk `dirPath` for all `.pug` files; collect url paths
+- `findLayouts(dirPath)`: walk for `layout.pug` files, build `Map<dir, absPath>`
+- For each `.pug` file:
+  - `compileModule(source, absPath, base, pagePaths)`:
+    - `pug-lexer` → `pug-parser` → extract `extends` path → strip `Extends` node from AST
+    - `pug-load` (resolves `include`/`extends`) → `pug-linker` → linked AST
+    - `generateCode(ast, urlPath)` → `{ code, hasScopedStyles }`
+    - If `hasScopedStyles`: `wrapWithScope(code, scopeId)` — wraps `return` expr in IIFE that injects `data-scope` attr
+  - Layout resolution:
+    - If component file (hyphenated filename): no layout
+    - Else if `extends NONE`: no layout
+    - Else if `extends "path"`: `resolveExtendsLayout()` — resolve relative to file dir
+    - Else: `resolveLayout()` — walk current → parent dirs for nearest `layout.pug`
+    - Layout files → `layoutChain[url] = target`; page files → `layoutMap[url] = target`
+- `bundleModules(modules, layoutMap, layoutChain, renderUrl)`:
+  - Each module → `case '/path': return new Function("data","__s","__v", "with(data){...}")`
+  - Emit: `pug_layout_map`, `pug_layout_chain`, `__s()` (null-safe stringify), `__v()` (ReferenceError-safe eval), `pug_pages()` switch/case with `__cache`, `pug_pages.__paths[]`, then `import renderUrl`
+
+**Codegen**
+
+`generateCode(ast, urlPath)` → `{ code, hasScopedStyles }`:
+- `generateBlock(ast)`: walk AST nodes, accumulate `exprs[]` (vnode expressions) and `stmts[]` (JS statements)
+  - `Text` → inline string concatenation
+  - `Code` (buffered) → `__s(__v(function(){ return expr }))` (escaped) or `rawHtmlSpan` (unescaped)
+  - `Code` (unbuffered) → stmt
+  - `Tag` → `generateTag(node)`
+  - `InterpolatedTag` → `generateInterpolatedTag(node)`
+  - `Conditional` → `generateConditional(node)` (ternary chain)
+  - `Each` / `EachOf` → loop expression
+  - `Case` / `While` → switch/loop expression
+  - `Mixin` / `MixinBlock` → mixin definition or call
+  - `NamedBlock` → recurse `generateBlock`
+  - `YieldBlock` → `__content`
+  - `Comment` / `BlockComment` / `Literal` → skip or raw
+- Return: preamble (stmts) + `return expr`
+
+`generateTag(node)`:
+- Build `selector` from tag name + static `class`/`id` attrs
+- Collect attrs into categories:
+  - `$role` → `buildRoleCondition()` (roles array check)
+  - `$lang` → `buildLangCondition()` (string match)
+  - `class` → static → selector dots; `{obj}` → spread; dynamic → `[{expr}: true]`
+  - `id` → static → selector hash; dynamic → attr
+  - `on*` → `on: { eventName: function($event){ ... __findScopeProxy ... __rerenderOnEvent } }`
+  - others → static: literal attr; dynamic: `__v(function(){ return expr })`
+- `<a>` without `href` → inject `href: ""`
+- Build `childrenExpr` from block:
+  - exprs only → single expr or `[exprs]`
+  - with stmts → IIFE with `with(window.__handlerScope(__d))`
+- `needsTpl` (`<pug-page rest>` or `<form rest|action+href>` with children):
+  - Wrap children in `__tpl: function(data){ ... }`, emit `create` hook to set `elm.__tpl` and `elm.__needsScope`, clear `childrenExpr`
+- `isHyphenated(tag)` (custom component tag):
+  - Emit `__attrs: { ... }` (non-role/lang/class/id attrs)
+  - Emit `__content: <childrenExpr>` (if children exist), clear `childrenExpr`
+  - Emit `hook: { create: fn, update: fn }` where `fn` syncs `__attrs`/`__content` from vnode data to DOM element
+- Assemble `h("selector", data, children)`, wrap in `$role`/`$lang` ternary guard if present
+
+`<style>` handling:
+- `extractTextBlock(node)` → raw CSS string
+- `isScopedStyle(node)` → `true` unless `scoped="false"`
+- `makeStyleExpr(css, scoped)` → `h("style", { key, attrs: {"data-pugpage-style"} }, scopedCss|css)`
+- `:sass` / `:scss` filter nodes → `sass.compileString()` before scoping
+
+**CSS Scoping**
+
+`scopeCss(cssSource, filePath)`:
+- `hashString(filePath)` → 6-char hex scope ID
+- Walk CSS at depth 0; prefix each selector with `[data-scope="<scopeId>"]`
+- Skip `@` at-rules, keyframe percentages (`from`/`to`/`X%`)
+- Split comma-separated selectors; prefix each individually
+
+**Layout Resolution**
+
+`findLayouts(dirPath)`:
+- Walk `dirPath` for files ending `layout.pug`
+- Return `Map<directory, absPath>`
+
+`resolveLayout(pageAbsPath, layouts, baseDir)`:
+- Start at `dirname(pageAbsPath)`, walk up to `baseDir`
+- At each dir: if layout exists and is not the page itself → return it
+
+`resolveExtendsLayout(pageAbsPath, extendsPath, baseDir)`:
+- Resolve `extendsPath` relative to page's directory, add `.pug` if missing
+- Return if file exists, else null
+
+`isComponentFile(filePath)`: filename (without `.pug`) contains `-`
+`isLayoutFile(filePath)`: filename ends with `layout.pug`
 
 ---
 
@@ -100,11 +183,37 @@ Routing triggering:
 
 Hyphenated tags like `<my-card>` resolve to `.pug` files and render as browser custom elements:
 
-- Compiler emits `pug_pages.__paths` in the bundle
-- Codegen: `isHyphenated()` check, hyphenated tags matching a `.pug` file get `__attrs`/`__content` snabbdom create hooks
-- Runtime `__registerComponents()` registers custom elements via `__createComponentClass()` — light DOM only, no `attachShadow()`
-- Runtime `__resolveComponentTemplate()` resolves URL-relative first, then falls back to `/components/`
+**Compile time**
+
+- Codegen `isHyphenated(tag)`: tag name contains `-` and is not `pug-page`
+- For matching tags, emit vnode data:
+  - `__attrs: { name: val, ... }` — all attrs except `$role`, `$lang`, `class`, `id`
+  - `__content: <childrenExpr>` — child vdom expression (if children exist)
+  - `hook: { create: fn, update: fn }` — `fn` copies `vn.data.__attrs` → `elm.__pugpage_attrs` and `vn.data.__content` → `elm.__pugpage_content` on both create and patch
+- `pug_pages.__paths[]` includes all component paths for runtime registration
 - Component `.pug` files (hyphenated filenames) automatically skip layout wrapping
+
+**Runtime**
+
+`__registerComponents()`:
+- For each path in `pug_pages.__paths[]`:
+  - If filename contains `-` and not already registered → `customElements.define(name, __createComponentClass(name))`
+
+`__createComponentClass(compName)`:
+- `constructor()`: set `_childVdom = null`, `_rendered = false`
+- `connectedCallback()`: if `!_rendered` → `_rendered = true`, `_render()`
+- `_render()`:
+  - `__resolveComponentTemplate(compName)`:
+    - Try `currentDir + compName` via `pug_pages()`
+    - Fallback: `/components/ + compName`
+  - Build initial scope: `{ $user, $page, ...__pugpage_attrs, __content: __pugpage_content || null }`
+  - `createScope(initial)` → reactive proxy
+  - `renderScope(this, tplFn, scope)` → snabbdom patch into element
+  - `__initScopedForms(this)`
+
+`__resolveComponentTemplate(compName)`:
+- Resolve `currentDir + compName` via `pug_pages()` first (URL-relative)
+- Fallback: `/components/ + compName` via `pug_pages()`
 
 ### Public API
 

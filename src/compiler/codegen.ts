@@ -333,7 +333,8 @@ function generateTag(node: PugASTNode): string {
       dataParts.push("__content: " + (childrenExpr || "null"));
       childrenExpr = "";
     }
-    dataParts.push("hook: { create(_,vn) { vn.elm.__pugpage_attrs = vn.data.__attrs; vn.elm.__pugpage_content = vn.data.__content; } }");
+    const hookBody = "(_,vn)=>{vn.elm.__pugpage_attrs=vn.data.__attrs;vn.elm.__pugpage_content=vn.data.__content}";
+    dataParts.push(`hook:{create:${hookBody},update:${hookBody}}`);
   }
 
   const dataStr = dataParts.length > 0 ? `{ ${dataParts.join(", ")} }` : "";

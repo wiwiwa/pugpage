@@ -21,7 +21,16 @@ See [Architecture.md](./Architecture.md) for full system design. Key ownership r
 - Browser behavior belongs in `src/render/render.js`; update `release/render.min.js` only when runtime code changes
 - Do not regenerate `release/render.min.js` for compiler-only changes
 
-## Coding Style & Naming Conventions
+## Documentation Style
+
+Architecture.md uses **spec-prose** — prose-shaped but spec-precise documentation designed to be code-generable:
+
+- **Function-first**: every block starts with `functionName(args):` as the lead line, followed by nested bullets
+- **Nested bullets show call graph**: `fn(args)` → inner steps → inner calls, indented under the caller
+- **No prose filler**: no "it does this by...", just `step → step → step`
+- **Branching is explicit**: "if X → ...; else if Y → ..."
+- **Emit/output is concrete**: shows exact JS strings, objects, or data shapes produced
+- **Section labels are bold text**, not headings: `**Label**` followed by a list, not `#### Label` — avoids heading noise when the section is a sublist
 
 Use TypeScript for CLI/server/compiler code and plain JavaScript for browser runtime code already under `src/render/`. Follow the existing two-space indentation style. Prefer named exports for shared functions and keep file names lowercase with hyphenated names where needed, such as `css-scope.ts`. Keep Pug fixture names aligned with routes, for example `show.pug`, `layout.pug`, and `index.pug`.
 
@@ -53,12 +62,17 @@ Pull requests should include a short description, the commands run, and any rele
 
 ## Release Procedure
 
-1. Build minified runtime: `deno bundle --minify -o ./release/render.min.js ./src/render/render.js`
+0. **Verify state before starting**:
+   - `git checkout master` — ensure on master, not detached HEAD
+   - `git merge --ff-only <commit>` if needed to bring master to the fix commit
+   - `git tag -l` — check existing tag naming convention (no `v` prefix: `1.9.6` not `v1.9.6`)
+   - Working tree must be clean
+1. Build minified runtime: `deno bundle --minify -o ./release/render.min.js ./src/render/render.js` (skip if compiler-only change — `render.min.js` must not change)
 2. Update `version` in `deno.json`
 3. Update `VERSION` in `pugpage.sh` to match
 4. Run verification: `deno test --allow-all --no-check` and `deno publish --dry-run`
-5. Amend previous commit with version bump: `git add deno.json pugpage.sh && git commit --amend --no-edit`
-6. Tag new version by increasing major, minor, or patch version
+5. Amend previous commit with version bump: `git add deno.json pugpage.sh release/render.min.js && git commit --amend --no-edit` — preserves the original commit message
+6. Tag new version — **must come after amend** (amend rewrites commit hash). Match existing convention: plain semver, no `v` prefix
 7. Double confirm before pushing
 8. Push branch and tag; `.github/workflows/publish-jsr.yml` publishes to JSR from the tag using GitHub OIDC
 9. Confirm the GitHub Actions publish job succeeds
