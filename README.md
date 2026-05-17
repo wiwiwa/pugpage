@@ -148,6 +148,7 @@ has:
 - `status` — expected main document status after `goto`
 - `has` — selector target (see above); asserts elements exist
 - `no` — selector target (see above); asserts elements do not exist
+- `js` — debug helper; evaluates a JavaScript expression in the browser and prints the result to stdout. jQuery is auto-injected if not already loaded (e.g. `js: $(".card").length`)
 - `timeout` — action group timeout in milliseconds (default: 5000)
 
 ## Example Directory Structure

@@ -231,6 +231,8 @@ function applyLayout(pageVdom, layoutPath) {
   return entry;
 }
 
+window.updatePage = onUrlChange;
+
 window.navigateTo = function (url) {
   var targetUrl = new URL(url, window.location.href);
   if (targetUrl.origin !== window.location.origin) {

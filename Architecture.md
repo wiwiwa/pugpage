@@ -196,6 +196,7 @@ When module load:
 
 - `window.$user` — auth API: `name`, `roles`, `lang`, `loginUrl`, `setAuthHeader(value, persistent)`, `logout()`
 - `window.navigateTo(url)` — SPA navigation (pushState)
+- `window.updatePage()` — re-renders the current page (e.g. for browser events like `fullscreenchange` that aren't template events)
 
 ### Event Listeners
 
