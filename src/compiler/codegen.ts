@@ -78,7 +78,7 @@ function isCustomTag(tagName: string): boolean {
 function emitCustomTagData(node: PugASTNode, dataParts: string[], blockResult: BlockResult): void {
   const compAttrs = (node.attrs ?? [])
     .filter(a => a.name !== "$role" && a.name !== "$lang" && a.name !== "class" && a.name !== "id")
-    .map(a => a.name + ": " + a.val);
+    .map(a => '"' + a.name + '": ' + a.val);
   if (compAttrs.length > 0) {
     dataParts.push("__attrs: {" + compAttrs.join(", ") + "}");
   }
@@ -289,9 +289,9 @@ function generateTag(node: PugASTNode): string {
       eventEntries.push(`${evtName}: function($event){var __elm=this.elm||this;var __s=window.__findScopeProxy(__elm);try{if(__s){with(window.__handlerScope(__s)){${handlerCode}}}else{${handlerCode}}}catch(e){console.error("PugPage event handler error:",e)}window.__rerenderOnEvent(__elm)}`);
     } else {
       if (isStaticString(a.val)) {
-        attrEntries.push(`${a.name}: ${a.val}`);
+        attrEntries.push(`"${a.name}": ${a.val}`);
       } else {
-        attrEntries.push(`${a.name}: __v(function(){ return ${a.val} })`);
+        attrEntries.push(`"${a.name}": __v(function(){ return ${a.val} })`);
       }
     }
   }
