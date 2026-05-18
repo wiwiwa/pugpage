@@ -249,6 +249,9 @@ function resolvePage(path, queryParams) {
 
   if (path.endsWith("/")) pageFn = pug_pages(path + "index");
   if (!pageFn) pageFn = pug_pages(path);
+  if (!pageFn && (pageFn = pug_pages(path + "/index"))) {
+    history.replaceState(null, "", path + "/");
+  }
 
   var segments = path.split("/").slice(1);
   if (segments.length > 1) {
