@@ -3,20 +3,24 @@ render:
   - goto: /render-test
   - has:
       .rest-status: OK
+  - has:
+      p.counter: "Count: 0"
   - click:
       a: Toggle Slot
   - has:
     - render-box
-    - p.slot-value: "count: 0"
-  - click: a.inc-slot
+    - p.slot-value: "slot active"
+  - click: a.inc
   - has:
-      p.slot-value: "count: 1"
-  - click: a.inc-slot
-  - has:
-      p.slot-value: "count: 2"
+      p.counter: "Count: 1"
   - click:
       a: Toggle Slot
   - no: render-box
+  - has:
+      p.counter: "Count: 1"
+  - click: a.inc
+  - has:
+      p.counter: "Count: 2"
 login:
   redirect if not login:
   - goto: /
@@ -52,3 +56,4 @@ user:
     has:
       li: demo
     no: user-edit
+  - js: document.title

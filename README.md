@@ -2,7 +2,7 @@ PugPage is a command-line tool for bundling and serving Pug files, enabling rapi
 
 # Features
 
-- **Custom Element
+- **Custom Tags**
   - **`pug-page`**
     - Usage: `pug-page(src='user.pug' rest='/api/user/1000')`
     - `src`: Pug template to render
@@ -10,6 +10,10 @@ PugPage is a command-line tool for bundling and serving Pug files, enabling rapi
   - Pug page `*-*.pug` as custom tag:
     - Custom tag are resolved at the dir of parent .pug file, or `/compoents`
       - e.g. `my-tag` is equivelent with `pug-page(src='my-tag.pug')` or `pug-page(src='/component/my-tag.pug')`, if either one exists
+  - **Page Title**: `title` tag sets the page title. Renders nothing to the DOM.
+    - `title(href="/") MyApp` — optional `href` for navigation.
+    - `$titles` — reactive array of `{label, href}` for building navigation.
+    - `document.title` merges via `document.titleFn`. Default: child first, separator `" | "`.
 - **Form Handling**
   - Usage `form(rest='/api/profile' action='/api/user/1' href='/user/1')` — fetches initial data from `rest`, submit to `action`, redirect to `href`.
     - both `rest` and `action` updates scope data
@@ -56,6 +60,8 @@ PugPage is a command-line tool for bundling and serving Pug files, enabling rapi
   - By default, `style.`, `:scss`, and `:sass` blocks are scoped to their parent template.
   - To emit global CSS, use `style(scoped=false).`, `:scss(scoped=false)`, or `:sass(scoped=false)`.
 
+See [docs/spec.md](docs/spec.md) for full specification.
+
 # Usage
 
 1. Install [Deno](https://docs.deno.com/runtime/getting_started/installation/)
@@ -70,11 +76,11 @@ PugPage is a command-line tool for bundling and serving Pug files, enabling rapi
 
 ```
 pugpage dev [--root=.] [--port=8000] [--api=URL] [--static=DIR]
-                                      Start dev server with live reload and API proxy
+                                       Start dev server with live reload and API proxy
 pugpage dist [--root=.] [--out=DIR]
-                                      Build for production
+                                       Build for production
 pugpage test [--root=.] [--api=URL] [--static=DIR] <test.yaml>
-                                      Run declarative browser tests in headless mode
+                                       Run declarative browser tests in headless mode
 pugpage install                       Install pugpage to ./pugpage
 pugpage update                        Update pugpage to latest version
 ```

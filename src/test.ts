@@ -178,7 +178,8 @@ async function runActionGroup(
         await page.addScriptTag({ url: "https://cdn.jsdelivr.net/npm/jquery@3/dist/jquery.min.js" });
       }
       const result = await page.evaluate(val as string);
-      if (result !== undefined) console.log(`  [js] ${JSON.stringify(result)}`);
+      if (result !== undefined)
+        console.log(`\n  [js] ${val} = ${JSON.stringify(result)}`);
       return null;
     },
   };
