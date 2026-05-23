@@ -1,218 +1,373 @@
-# PugPage Architectural Design
+# PugPage Architecture
 
 ## Overview
 
-PugPage is a command-line tool and runtime for developing, bundling, and serving Pug-based web applications. Pug templates compile to virtual DOM functions (snabbdom) at build time. The runtime patches the DOM incrementally via `init/patch` instead of replacing `innerHTML`.
+PugPage is a Deno CLI and browser runtime for serving and bundling Pug-based applications. Pug templates compile to snabbdom VDOM functions at build time. The browser runtime owns routing, scope lifetime, reactive rendering, forms, components, REST data, and document title updates.
 
----
+This document describes the target architecture. It is intentionally concise: enough to guide an implementation plan and point to key source locations, without duplicating every implementation branch.
 
-## 1. System Components
+### How To Read This Document
 
-### CLI Tool (`pugpage`)
+Read the sections in order:
 
-`pugpage` is a Deno script:
-- **init**: Initializes a new PugPage project with sample files.
-- **dev**: Starts a development server with SSE live reload.
-- **dist**: Builds for production with minification (Terser) and content-hash filenames.
-- **test**: Runs declarative YAML test files via Playwright.
-- **install / update**: Downloads the latest `pugpage.sh` wrapper from GitHub releases.
+1. **Mental Model** - the system shape.
+2. **Core Contracts** - the runtime/compiler data contracts.
+3. **Main Workflows** - how requests, renders, forms, and titles move through the system.
+4. **Implementation Map** - key functions and ownership boundaries for source navigation.
 
-### Development Server (`src/dev.ts`)
-- `/index.html`: HTML shell that loads the bundle via `<script type="module" src="/dist.js">`
-- `/dist.js`: Combined compiler output + runtime. Recompiled on `.pug` file changes.
-- `/__livereload`: SSE endpoint. Pushes `"reload"` events to connected browsers.
-- Static assets served from the root directory.
-- 404 + `Accept: text/html` → serves `/index.html` (SPA fallback).
+## Mental Model
 
-### Dist Builder (`src/dist.ts`)
-- `dist.<hash>.js`: Minified bundle (compiler output + runtime). `<hash>` is SHA-256 of content.
-- `index.html`: Loads the hashed JS file.
-- `bundleJS()`: Concatenates `compileDirectory()` output + `src/render/render.js`.
+PugPage has two halves:
 
-### PugPage Compiler
+- **Compiler**: walks a project directory, compiles `.pug` files into JavaScript template records, and emits one browser bundle.
+- **Runtime**: loads template records, resolves the current URL to a page, builds the layout chain, creates scopes, and patches snabbdom VDOM into host elements.
 
-`compileDirectory(dirPath, opts)`:
-- Walk `dirPath` for all `.pug` files; collect url paths
-- `findLayouts(dirPath)`: walk for `layout.pug` files, build `Map<dir, absPath>`
-- For each `.pug` file:
-  - `compileModule(source, absPath, base, pagePaths)`:
-    - `pug-lexer` → `pug-parser` → extract `extends` path → strip `Extends` node from AST
-    - `pug-load` (resolves `include`/`extends`) → `pug-linker` → linked AST
-    - `generateCode(ast, urlPath)` → `{ code, hasScopedStyles }`
-    - If `hasScopedStyles`: `wrapWithScope(code, scopeId)` — wraps `return` expr in IIFE that injects `data-scope` attr
-  - `resolveFileLayout(absPath, extendsPath, layouts, base)` → layout target url or `null`:
-    - If `isComponentFile` (hyphenated filename): `null`
-    - Else if `extends NONE`: `null`
-    - Else if `extends "path"`: `resolveExtendsLayout()`
-      - Resolve relative to page dir, add `.pug` if missing, return if exists
-    - Else: `resolveLayout()`
-      - Start at `dirname(pageAbsPath)`, walk up to `baseDir`, return first `layout.pug` that is not the page itself
-  - Layout files → `layoutChain[url] = target`; page files → `layoutMap[url] = target`
-- `bundleModules(modules, layoutMap, layoutChain, renderUrl)`:
-  - Each module → `case '/path': return new Function("data","__s","__v", "with(data){...}")`
-  - Emit: `pug_layout_map`, `pug_layout_chain`, `__s()` (null-safe stringify), `__v()` (ReferenceError-safe eval), `pug_pages()` switch/case with `__cache`, `pug_pages.__paths[]`, then `import renderUrl`
+A rendered route is a tree of runtime hosts:
 
-**Codegen**
+```text
+<pug-router>
+  <pug-page> outer layout scope
+    <pug-page> inner layout scope
+      <pug-page> route page scope
+        <form> optional form body scope
+        <my-component> optional component scope
+```
 
-`generateCode(ast, urlPath)` → `{ code, hasScopedStyles }`:
-- `generateBlock(ast)`: walk AST nodes, accumulate `exprs[]` (vnode expressions) and `stmts[]` (JS statements)
-  - `Text` → inline string concatenation
-  - `Code` (buffered) → `__s(__v(function(){ return expr }))` (escaped) or `rawHtmlSpan` (unescaped)
-  - `Code` (unbuffered) → stmt
-  - `Tag` → `generateTag(node)`
-  - `InterpolatedTag` → `generateInterpolatedTag(node)`
-  - `Conditional` → `generateConditional(node)` (ternary chain)
-  - `Each` / `EachOf` → loop expression
-  - `Case` / `While` → switch/loop expression
-  - `Mixin` / `MixinBlock` → mixin definition or call
-  - `NamedBlock` → recurse `generateBlock`
-  - `YieldBlock` → `__content`
-  - `Comment` / `BlockComment` / `Literal` → skip or raw
-- Return: preamble (stmts) + `return expr`
+Each host owns one `Scope`. Reusing a host reuses its scope. Replacing a host disposes its scope and descendants.
 
-`generateTag(node)`:
-- Build `selector` from tag name + static `class`/`id` attrs
-- Collect attrs into categories:
-  - `$role` → `buildRoleCondition()` (roles array check)
-  - `$lang` → `buildLangCondition()` (string match)
-  - `class` → static → selector dots; `{obj}` → spread; dynamic → `[{expr}: true]`
-  - `id` → static → selector hash; dynamic → attr
-  - `on*` → `on: { eventName: function($event){ ... __findScopeProxy ... __rerenderOnEvent } }`
-  - others → static: literal attr; dynamic: `__v(function(){ return expr })`
-- `<a>` without `href` → inject `href: ""`
-- Build `childrenExpr` from block:
-  - exprs only → single expr or `[exprs]`
-  - with stmts → IIFE with `with(window.__handlerScope(__d))`
-- `needsTpl` (`<pug-page rest>` or `<form rest|action+href>` with children):
-  - Wrap children in `__tpl: function(data){ ... }`, emit `create` hook to set `elm.__tpl` and `elm.__needsScope`, clear `childrenExpr`
-- `if isCustomTag(tag)` 
-  - `emitCustomTagData(node, dataParts, blockResult)`:
-    - Emit `__attrs: { ... }` (non-role/lang/class/id attrs)
-    - Emit `__content: <childrenExpr>` (via `blockToExpr`, if children exist)
-    - Emit `hook: { create: fn, update: fn }` — `create` syncs `__attrs`/`__content` to element; `update` syncs then calls `elm._update()` to re-render component
-- Assemble `h("selector", data, children)`, wrap in `$role`/`$lang` ternary guard if present
+Host tags are real browser DOM elements, but they are not required to be registered custom elements. PugPage lifecycle is owned by snabbdom VDOM hooks, not by `customElements.define()`, `connectedCallback`, or `disconnectedCallback`.
 
-`<style>` handling:
-- `extractTextBlock(node)` → raw CSS string
-- `isScopedStyle(node)` → `true` unless `scoped="false"`
-- `makeStyleExpr(css, scoped)` → `h("style", { key, attrs: {"data-pugpage-style"} }, scopedCss|css)`
-- `:sass` / `:scss` filter nodes → `sass.compileString()` before scoping
+### Unidirectional Data Flow
 
-**CSS Scoping**
+Runtime state flows in one direction: `scope state -> renderFn(scope) -> VDOM -> DOM`
+Rules:
+- parent render output is the source of truth for child host metadata
+- child hosts receive `$parentScope`, route metadata, attrs, and form metadata through VDOM data
+- snabbdom hooks are lifecycle effects of VDOM patching, not a reverse data channel
+- hooks may create, update, register, or dispose scopes, but must not read the DOM to discover ownership
+- scope disposal is driven by VDOM destroy hooks, not custom element lifecycle callbacks
+- post-patch DOM inspection must not own data flow or scope ownership
 
-`scopeCss(cssSource, filePath)`:
-- `hashString(filePath)` → 6-char hex scope ID
-- Walk CSS at depth 0; prefix each selector with `[data-scope="<scopeId>"]`
-- Skip `@` at-rules, keyframe percentages (`from`/`to`/`X%`)
-- Split comma-separated selectors; prefix each individually
+## Core Contracts
 
----
+### Template Record
 
-## 2. Runtime Architecture (`src/render/render.js`)
+`pug_pages(path)` and `pug_components(name)` return template records:
+```ts
+type TemplateRecord = {
+  renderFn: Function;
+  initFn: Function | null;
+  layout: string | null;
+};
+```
 
-### Routing
+- `renderFn` renders a compiled template into snabbdom VDOM.
+- `initFn` runs once for the scope lifetime.
+- `layout` points to the parent layout template path.
+- `layout: null` means the template has no parent layout.
 
-Routing triggering:
-- **Initial page load** — call `onUrlChange()` directly
-- **`<a>` click** —
-  - skips `#`, empty href, `_blank`, modifiers, cross-origin
-  - `navigateTo(href)`
-- **Form submit** — 
-  - fetch initial data at `rest`, if exists
-  - submit form data to `action` URL
-    - on success: data merges into scope, `navigateTo(href)`.
-    - on error: `$rest` updated, template re-renders.
-- **Browser back/forward** — `popstate` pushstate` fires
+Example:
+```js
+pug_pages("/admin/users/show") === {
+  renderFn,
+  initFn,
+  layout: "/admin/layout"
+};
 
-**`navigateTo(url)`** 
-- public API
-- replace `window.location` and return, if `url` is not same origin
-- call `pushState()` then `onUrlChange()` directly
+pug_pages("/layout") === {
+  renderFn,
+  initFn,
+  layout: null
+};
+```
 
-**`popstate` event handler**: `onUrlChange()`
+### Scope
 
-### Page Rendering
+`Scope` is the runtime state object for one host element. It may be implemented as a plain object, proxy target, or class; the architecture only requires the behavior below. It owns:
+- application data copied from initial/template data
+- runtime fields and methods using `$*` or `$_*`
+- `$renderFn`
+- `$element`
+- `$parentScope`
+- `$deps`
+- local title state
+- optional `$rest`
 
-`onUrlChange()` triggers this flow:
-1. **resovlePage()**:
-   look up page function via URL fallback: exact match → `/show` → segment peel → `/404`
-2. **Build args** — `$page` (path, args, params), query params
-3. **Build VDOM** — call `pageFn(args)` → produces VDOM. Each scoped element has its own reactive scope (proxy with dirty-bit tracking):
-   - **page root**: `{ $user, $page, __content }`
-   - **pug-page**: fetches data from `rest` URL, re-renders children
-   - **form**: `rest` for initial data fetch, `action` for submit, or both
-   - **component**: `{ $user, $page, __attrs..., __content }`
-4. **applyLayout(pageVdom, layoutPath)**
-   - Search the cache stack for `layoutPath`
-    - If found: clear the stack above the found entry, return the cached result
-    - Find parent layout from `pug_layout_chain`
-    - If parent exists: `content = applyLayout(pageVdom, parentLayout)` (recurse)
-    - Else: `content = pageVdom`
-    - Render `layoutFn({ __content: content })`, push result onto the stack
-    - Return result
-5. **Patch DOM** — `renderScope()` patches the result into one root element (`div#__pug_page__`)
-6. **Scoped elements render** — `<pug-page rest="...">` and `<form rest="...">` fetch data from their `rest` URL, create scope, and render children. `$rest` is `null` initially, set to `{ status, data }` after fetch.
+`Scope` scheduling:
+- assigning application state marks the scope dirty
+- dirty scopes render once in a queued microtask
+- the queued task skips disposed or clean scopes
+- rerendering reuses the same scope and does not rerun `:init`
 
-### Reactive Event Handlers
+Reserved names:
+- application data must not overwrite `$*`
+- REST merge skips keys whose names start with `$`
+- runtime-only internals should use `$_*`
 
-`on*` attributes compile to snabbdom `on` listeners with scope access:
+### Scope Proxies
 
-- Codegen emits `on: { eventName: function($event){...} }`
-- Handler runs inside `with(window.__handlerScope(scope))` — proxy with `has(){return true}` captures assignments like `editing = true` into the scope
-- `this` in handlers is the vnode; codegen uses `this.elm||this` to get the DOM element
-- `window.__findScopeProxy(elm)` walks up DOM to find nearest scope proxy
-- `window.__rerenderOnEvent(elm)` triggers re-render (always re-renders; nested mutations bypass dirty flag)
-  - call `renderScope()` for udpating DOM
-  - `__rerendering` flag prevents template re-init from overwriting event-handler-set values
+`createRenderScope(element, templateKey, renderFn, initFn, initial)` creates the scope target and returns the scope proxy used by templates.
 
-### Component Tags
+There are three proxy modes:
+- **render proxy**: passed to compiled templates by `makeRenderFn(element, tplFn)`; tracks render dependencies and marks the scope dirty on application writes
+- **init proxy**: passed to `initFn`; initializes scope state without tracking render dependencies or scheduling rerenders
+- **handler proxy**: wraps the scope for form body rendering and event handlers via `__handlerScope(scope)`; resolves scope locals and exposes `$user`/`$page`/`window` without dependency tracking or `$*` write rejection — form bodies write `$title` and other fields directly through the underlying render proxy's set handler
 
-Hyphenated tags like `<my-card>` resolve to `.pug` files and render as browser custom elements:
+The render proxy:
+- prevents assignment leakage from `with(data) { ... }`
+- resolves application locals from the scope
+- exposes runtime values such as `$user`, `$page`, `$args`, and `$params`
+- tracks `$user`, `$page`, `$titles` dependencies
+- rejects application writes to reserved `$*` names except runtime-controlled title assignment
+- the `has()` trap returns `false` for `$$`-prefixed properties so that compiler-generated temporaries (e.g. `$$title`) fall through to local `var` declarations instead of being intercepted
 
-**Runtime**
+Bare globals that must bypass scope lookup are listed in `SCOPE_GLOBALS`.
 
-When module load:
-`__registerComponents()`
-- For each path in `pug_pages.__paths[]`:
-  - If filename contains `-` and not already registered 
-    - `customElements.define(name, __createComponentClass(name))`
+**`$_target` runtime backdoor**: the proxy rejects `$*` writes from templates, but the runtime itself must write to fields like `$dirty`, `$scheduled`, `$rest`, `$renderFn`, and `$definingInputs`. Every runtime write to a reserved field uses `scope.$_target` — the backing target object stored on the target before the proxy is created. This bypasses the proxy's set handler entirely. Templates must never access `$_target`.
 
-`__createComponentClass(compName)` return a class with:
-- `constructor()`: set `_childVdom = null`, `_rendered = false`
-- `connectedCallback()`: if `!_rendered` → `_rendered = true`, `_render()`
-- `_render()`:
-  - `__resolveComponentTemplate(compName)` → `tplFn`:
-    - Try `currentDir + compName` via `pug_pages()` (URL-relative)
-    - Fallback: `/components/ + compName` via `pug_pages()`
-  - Build initial scope: `{ $user, $page, ...__pugpage_attrs, __content: __pugpage_content || null }`
-  - `createScope(initial)` → reactive proxy with exposed `target`
-  - `renderScope(this, tplFn, scope)` → snabbdom patch into element
-  - `__initScopedForms(this)`
-- `_update()`:
-  - Write `__pugpage_attrs` and `__pugpage_content` directly to scope `target` (bypasses `__rerendering` guard on proxy)
-  - `renderScope(this, tplFn, scope)` → re-render component with updated content
+### Host Scope Lifecycle
 
-### Public API
+Parent render output drives child host lifecycle. Scope reuse is determined by DOM element identity: `element.__scope` holds the current scope, and `createOrReuseScope` checks it against the template key and defining inputs.
 
-- `window.$user` — auth API: `name`, `roles`, `lang`, `loginUrl`, `setAuthHeader(value, persistent)`, `logout()`
-- `window.navigateTo(url)` — SPA navigation (pushState)
-- `window.updatePage()` — re-renders the current page (e.g. for browser events like `fullscreenchange` that aren't template events)
+Snabbdom hook data on `<pug-page>`, scoped `<form>`, and component vnodes manages scope creation, update, and disposal:
+- host tags remain visible in the DOM, for example `<pug-page>` and `<user-card>`
+- host tags are registered as custom elements (`pug-router`, `pug-page`) for `connectedCallback`-driven initial mount, but lifecycle is owned by snabbdom hooks
+- create hook creates or reuses the scope via `element.__scope`
+- destroy hook calls `scopeDisposal(scope)` — snabbdom fires destroy per removed VNode, so each scope cleans up independently
+- no DOM scan or post-patch reconciliation owns scope lifecycle
 
-### Event Listeners
+### Form Contract
 
-`popstate` (browser back/forward), `<a>` click interception (skips `#`, empty href, `_blank`, modifiers, cross-origin), `document.body` submit listener.
+Scoped forms are forms with child template content.
+```pug
+form(rest action="/api/user/1" method="PATCH" href="/user/1")
+```
 
-### Inline Styles
+Rules:
+- `action` is required for scoped forms.
+- absent `rest` means no initial fetch.
+- empty `rest` means initial `GET action`.
+- non-empty `rest` means initial `GET rest`.
+- submit sends form data to `action` using the form method.
+- `href` navigates only after a successful submit.
+- initial fetch and submit both update the form scope `$rest`.
+- plain object response data shallow-merges non-`$*` plain-object fields into the form scope.
 
-- `style.`, `:scss`, `:sass` emitted as inline VDOM `h("style", ...)` at template position
-- No `document.head` injection — styles live inside the rendered page subtree
-- Each style gets stable `key` and `data-pugpage-style` attribute for snabbdom patch identity
-- Sass/SCSS support is compiler-only
+### REST State
 
----
+`$rest` is always an object:
+```js
+{ status: number | null, data: unknown, loading: boolean, headers: object }
+```
 
-## 3. Compiler and Runtime Ownership
+REST responses update `$rest`. Successful plain-object response data is also shallow-merged into the owning scope, skipping `$*` keys. REST merges only non-`$*` plain-object fields.
 
-- Compiler behavior: `src/compiler.ts` and `src/compiler/`
-- Browser behavior: `src/render/render.js`; update `release/render.min.js` only when runtime code changes
-- Do not regenerate `release/render.min.js` for compiler-only changes
+### Title Contract
+
+`title` tags do not emit DOM. The compiler generates `$$title = <expression>` as a local variable, then `$title = $$title` assigns it to the scope.
+
+Title propagation is scope-based:
+- each scope has `$title` (singular) — its own local title set via `$$title → $title`
+- each scope has `$titles` (plural) — the descendant title chain, not including own `$title`
+- when `$title` changes on a scope, the runtime walks up through `$parentScope`
+- at each ancestor, `$titles` is set to the child's chain: `[child.$title, ...child.$titles]`
+- each ancestor scope that reads `$titles` (tracked in `$deps`) is dirtied and re-rendered
+- when a scope is destroyed, its title entry is removed from its ancestor's `$titles` and title propagation is triggered for the parent path
+- when the walk reaches the root scope, `document.title` is recalculated from `[root.$title, ...root.$titles]`
+- `document.titleFn(newLabel, accumulatedTitle)` is an optional custom fold function that defaults to `newLabel + " | " + accumulatedTitle`
+
+## Main Workflows
+
+### Build
+
+Key source entry points:
+- `compileDirectory(dirPath, opts)`
+- `compileModule(source, absPath, base, pagePaths)`
+- `resolveLayout(pageAbsPath, layouts, baseDir)`
+- `resolveExtendsLayout(pageAbsPath, extendsPath, baseDir)`
+- `bundleModules(pageModules, componentModules, renderUrl)`
+
+Flow:
+```text
+pugpage dev/dist
+  -> compileDirectory(root)
+  -> compile every .pug file
+  -> split pages from components
+  -> emit page/component template records
+  -> append/import browser runtime
+```
+
+Compiler responsibilities:
+- compile each template into a `TemplateRecord`
+- include `renderFn`, `initFn`, and `layout`
+- place URL-reachable page records in the page registry
+- place hyphenated component records in the component registry
+- emit known page/component paths for lookup and registration
+
+Layout handling:
+- compiler resolves both explicit and convention layouts
+- `findLayouts(dirPath)` indexes `layout.pug` files by directory
+- explicit `extends "path"` uses `resolveExtendsLayout(...)`
+- no explicit `extends` uses `resolveLayout(...)` to find the nearest `layout.pug` in the template directory or an ancestor directory
+- the resolved layout path becomes `TemplateRecord.layout`
+- when no explicit or convention layout exists, `TemplateRecord.layout = null`
+- runtime only follows `TemplateRecord.layout`; it does not perform convention-based layout discovery
+
+### Template Codegen
+
+Key source entry points:
+- `generateCode(ast, urlPath)`
+- `generateBlock(ast)`
+- `generateTag(node)`
+- `compileScopedFormBody(node)`
+- `emitCustomTagData(node, dataParts, blockResult)`
+- `scopeCss(cssSource, filePath)`
+
+Compiler output should use explicit `window.*` access for runtime helpers such as `window.$h`, `window.$s`, `window.$v`, and `window.renderSlot`.
+
+Codegen responsibilities:
+- convert Pug AST nodes into snabbdom VDOM expressions
+- extract `:init` blocks into `initFn`
+- compile title tags into `$$title = <expression>; $title = $$title` assignments
+- compile scoped form bodies into lexical child render functions
+- compile component tags into host VNodes with attrs/content metadata
+- compile scoped CSS by adding stable `data-scope` selectors and attributes
+
+### Route Render
+
+Key source entry points:
+- `navigateTo(url)`
+- `handlePopstate(event)`
+- `handleUrlChange(location, reason)`
+- `resolveRoute(location)`
+- `resolveLayoutChain(templatePath)`
+- `buildRouteEntry(route)`
+- `routerRender(route)`
+- `renderSlot(scope)`
+
+Flow:
+```text
+URL change
+  -> resolveRoute(location)
+  -> update window.$page
+  -> dirty scopes that read page data
+  -> resolve layout chain from TemplateRecord.layout
+  -> patch <pug-router>
+  -> keyed <pug-page> hosts create/reuse/dispose scopes
+```
+
+Route chain: `outer layout -> inner layout -> page`
+
+`renderSlot(scope)` renders the next entry in the route chain as a child `<pug-page>` host and passes `$parentScope`, `$routeChain`, and `$routeIndex`.
+
+### Scope Render
+
+Key source entry points:
+- `createRenderScope(element, templateKey, renderFn, initFn, initial)`
+- `makeRenderFn(element, tplFn)`
+- `markDirty(scope)`
+- `renderFn(scope)`
+- `childHostHooks(parentScope)`
+- `scopeDisposal(scope)`
+
+Flow:
+```text
+scope marked dirty
+  -> queue one microtask
+  -> skip if clean or disposed
+  -> renderFn(scope)
+  -> compiled template receives the render proxy
+  -> compiled template returns VDOM
+  -> snabbdom patches host DOM
+  -> host hooks create/update/destroy child scopes
+  -> title propagation updates if needed
+```
+
+`:init` lifetime:
+- runs once when a scope is created
+- does not run on rerender of the same scope
+- runs again only when the host is replaced or defining inputs change
+
+### Data And REST
+
+Key source entry points:
+- `markDirty(scope)`
+- `window.updatePage()`
+- `fetchIntoScope(restUrl, scope, fetchOpts)`
+
+Rules:
+- `$page` is replaced as a whole object on route changes.
+- `$page` reads track the `page` dependency.
+- `$user` reads track the `user` dependency.
+- `window.updatePage()` dirties scopes that read `$user`.
+- REST merges only non-`$*` plain-object fields into scope.
+
+### Forms
+
+Key source entry points:
+- `compileScopedFormBody(node)`
+- `initScopedForms(scope)`
+- `initFormScope(form)`
+
+Flow:
+```text
+parent render emits <form action ...>
+   -> form hook stores form body metadata
+   -> initScopedForms discovers unscoped forms
+   -> initFormScope(form) creates the form scope
+   -> optional initial GET from rest/action
+   -> submit handler
+    -> update $rest and non-`$*` scope fields
+   -> navigate to href after successful submit
+```
+
+Scope reuse:
+- keep the form scope when `action` and resolved rest URL are unchanged
+- recreate the form scope when any of those defining inputs change
+
+### Components
+
+Key source entry points:
+- `pug_components(name)`
+- `emitCustomTagData(node, dataParts, blockResult)`
+- `__createComponentClass(name)`
+
+Rules:
+- hyphenated `.pug` files become component templates
+- component templates are not URL reachable
+- component tags remain hyphenated DOM elements such as `<user-card>`
+- component hosts are registered via `customElements.define(name, __createComponentClass(name))`
+- component hosts preserve their scope across attr updates
+- attr updates rerender the existing scope without rerunning `:init`
+
+### Titles
+
+Key source entry points:
+- `generateBlock()` (title tag compilation, inlined)
+- `propagateTitleChange(scope)`
+- `documentTitle(titles)`
+
+## Implementation Map
+
+Compiler ownership:
+- `src/compiler.ts`
+- `src/compiler/`
+- template record emission
+- layout field resolution
+- Pug AST codegen
+- scoped CSS codegen
+
+Runtime ownership:
+- `src/render/render.js`
+- registries: `pug_pages()` and `pug_components()`
+- route resolution and router patching
+- `Scope` and scope proxy behavior
+- child host hooks and disposal
+- REST fetch/merge
+- scoped forms
+- components
+- title propagation
+
+Release artifact ownership:
+- `release/render.min.js` is updated only for runtime release builds.
+- Do not regenerate `release/render.min.js` for compiler-only changes.

@@ -2,7 +2,7 @@ div.dialog-overlay
   div.dialog
     div.dialog-header
       h3= title
-      a.close-btn(href="#" onclick="open=false") X
+      a.close-btn(onclick="open=false") X
     div.dialog-body
       if open !== false
         slot

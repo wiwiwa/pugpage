@@ -1,21 +1,65 @@
 // === VDOM Runtime ===
-// Loaded after dist.js which provides window globals: pug_pages, h, __s, __v, pug_layout_map, pug_layout_chain
+// Loaded after dist.js which assigns window.__pugpage with bundle data
 
 import { init, h, attributesModule, classModule, propsModule, styleModule, eventListenersModule } from "https://cdn.jsdelivr.net/npm/snabbdom@3.6.3/build/index.js";
 
 var __patch = init([attributesModule, classModule, propsModule, styleModule, eventListenersModule]);
 
-window.h = h;
+window.$h = h;
 
-// === State ===
-var __pageRoot = null;
-var __layoutStack = [];
+// === Helpers ===
+window.$s = function $s(v) { return v == null ? '' : String(v); };
+window.$v = function $v(fn) { try { return fn(); } catch(e) { if (e instanceof ReferenceError) console.warn('PugPage:', e.message); return ''; } };
 
-// Layout metadata from bundle (graceful fallback for test scope)
-var __layout_map = typeof pug_layout_map !== "undefined" ? pug_layout_map : {};
-var __layout_chain = typeof pug_layout_chain !== "undefined" ? pug_layout_chain : {};
+function __initRegistries() {
+  var data = window.__pugpage;
+  window.__pugpage = null;
+  var _ref = data || {};
+  var pageCases = _ref.pageCases || {};
+  var componentCases = _ref.componentCases || {};
+  var pageInit = _ref.pageInit || {};
+  var componentInit = _ref.componentInit || {};
+  var pagePaths = _ref.pagePaths || [];
+  var componentPaths = _ref.componentPaths || [];
 
-// === User State ===
+  function buildRegistry(cases, init) {
+    var cache = {};
+    function lookup(filePath) {
+      if (cache[filePath]) return cache[filePath];
+      var raw = cases[filePath];
+      if (raw) {
+        var fn = function(data) { return raw(data); };
+        cache[filePath] = fn;
+        return fn;
+      }
+      return null;
+    }
+    lookup.__cache = cache;
+    lookup.__init = init;
+    return lookup;
+  }
+
+  window.pug_components = buildRegistry(componentCases, componentInit);
+  window.pug_components.__paths = componentPaths;
+
+  var componentLookup = window.pug_components;
+  var pageLookup = buildRegistry(pageCases, pageInit);
+  window.pug_pages = function(filePath) {
+    var result = pageLookup(filePath);
+    if (!result) result = componentLookup(filePath);
+    return result;
+  };
+  window.pug_pages.__cache = pageLookup.__cache;
+  window.pug_pages.__paths = pagePaths;
+  window.pug_pages.__init = pageInit;
+
+  window.__layout_map = data.layoutMap || {};
+  window.__layout_chain = data.layoutChain || {};
+}
+
+__initRegistries();
+
+// === Auth State ===
 var __AUTH_SESSION_KEY = "pugpage.authHeader.session";
 var __AUTH_LOCAL_KEY = "pugpage.authHeader.local";
 
@@ -32,6 +76,7 @@ function __clearAuthStorage() {
   localStorage.removeItem(__AUTH_LOCAL_KEY);
 }
 
+// === User State ===
 window.$user = {
   name: "",
   roles: [],
@@ -57,42 +102,201 @@ window.$user = {
   }
 };
 
-// === Reactive Scope ===
-var __rerendering = false;
+// === Page State ===
+window.$page = { path: "", args: [], params: {} };
 
-function createScope(initial) {
-  var dirty = false;
+// === Navigation Counter ===
+
+
+// === Scope Architecture ===
+// createRenderScope returns a scope proxy directly (no tracker object).
+// Runtime-owned fields stored on scope target: $renderFn, $element,
+// $templateKey, $dirty, $scheduled, $deps, $parentScope, $vnode.
+// Proxy get: only $user, $page, $args, $params, window — no general window fallback.
+// Compiled templates use window.$h(), window.$s(), window.$v() explicitly.
+
+var __RUNTIME_FIELDS = {
+  $dirty: 1, $scheduled: 1, $deps: 1, $renderFn: 1,
+  $element: 1, $templateKey: 1, $parentScope: 1,
+  $vnode: 1, $titles: 1, $title: 1, $definingInputs: 1, $_target: 1
+};
+
+var SCOPE_GLOBALS = ["Math", "console", "Date", "JSON", "Array", "Object", "String", "Number", "Boolean", "Error", "parseInt", "parseFloat", "isNaN", "isFinite", "undefined", "NaN", "Infinity", "encodeURIComponent", "decodeURIComponent", "Promise", "Symbol", "Map", "Set", "RegExp"];
+
+function createRenderScope(element, templateKey, renderFn, initFn, initial) {
   var target = Object.create(null);
+  if (initial) Object.assign(target, initial);
+  target.$element = element;
+  target.$renderFn = renderFn;
+  target.$templateKey = templateKey;
+  target.$dirty = false;
+  target.$scheduled = false;
+  target.$deps = new Set();
+  target.$parentScope = __findScopeProxy(element.parentElement);
+  target.$vnode = null;
+  target.$titles = [];
+  target.$title = null;
+  target.$_target = target;
+
   var scope = new Proxy(target, {
-    has() { return true; },
+    has(t, prop) {
+      if (typeof prop === "string" && prop.charAt(0) === "$" && prop.charAt(1) === "$") return prop in t;
+      return true;
+    },
     get(t, prop) {
+      if (prop === "$titles") t.$deps.add("$titles");
       if (Object.prototype.hasOwnProperty.call(t, prop))
         return t[prop];
-      if (prop in window) return window[prop];
+      switch (prop) {
+        case "$user": t.$deps.add("$user"); return window.$user;
+        case "$page": t.$deps.add("$page"); return window.$page;
+        case "$args": return window.$page.args;
+        case "$params": return window.$page.params;
+        case "window": return window;
+        default:
+          if (typeof prop !== "string" || prop.charAt(0) === "$") return undefined;
+          if (SCOPE_GLOBALS.indexOf(prop) !== -1) return window[prop];
+          return undefined;
+      }
     },
     set(t, prop, value) {
-      if (__rerendering && Object.prototype.hasOwnProperty.call(t, prop))
+      if (typeof prop === "string" && prop.charAt(0) === "$" && prop !== "$title") {
         return true;
+      }
       if (t[prop] !== value) {
         t[prop] = value;
-        dirty = true;
+        if (!__RUNTIME_FIELDS[prop]) markDirty(scope);
+        if (prop === "$title") propagateTitleChange(scope);
       }
       return true;
     }
   });
-  if (initial) Object.assign(scope, initial);
-  return {
-    scope,
-    target,
-    isDirty() { return dirty; },
-    clearDirty() { dirty = false; }
-  };
+
+  if (initFn) {
+    var initProxy = new Proxy(target, {
+    has(t, prop) {
+      if (typeof prop === "string" && prop.charAt(0) === "$" && prop.charAt(1) === "$") return prop in t;
+      return true;
+    },
+      get(t, p) {
+        if (Object.prototype.hasOwnProperty.call(t, p)) return t[p];
+        switch (p) {
+          case "$user": return window.$user;
+          case "$page": return window.$page;
+          case "window": return window;
+        default:
+          if (typeof p !== "string" || p.charAt(0) === "$") return undefined;
+          if (SCOPE_GLOBALS.indexOf(p) !== -1) return window[p];
+          return undefined;
+      }
+      },
+      set(t, p, v) { t[p] = v; return true; }
+    });
+    initFn(initProxy);
+  }
+
+  return scope;
 }
+
+function markDirty(scope) {
+  var t = scope.$_target;
+  if (!t.$dirty) t.$dirty = true;
+  if (!t.$scheduled && t.$element) {
+    t.$scheduled = true;
+    queueMicrotask(function () {
+      flushRender(scope);
+    });
+  }
+}
+
+function flushRender(scope) {
+  var t = scope.$_target;
+  t.$scheduled = false;
+  if (t.$dirty && t.$element) {
+    t.$dirty = false;
+    scope.$renderFn(scope);
+  }
+}
+
+// === Scope Reuse and Disposal ===
+
+function shouldCreateScope(scope, definingInputs) {
+  if (!scope) return true;
+  var prev = scope.$definingInputs;
+  if (!prev) return true;
+  var keys = Object.keys(definingInputs);
+  for (var i = 0; i < keys.length; i++) {
+    if (prev[keys[i]] !== definingInputs[keys[i]]) return true;
+  }
+  return false;
+}
+
+function createOrReuseScope(element, templateKey, renderFn, initFn, initial, definingInputs) {
+  var existing = element.__scope || null;
+  if (existing && existing.$templateKey === templateKey && !shouldCreateScope(existing, definingInputs)) {
+    return existing;
+  }
+  if (existing) scopeDisposal(existing);
+  var scope = createRenderScope(element, templateKey, renderFn, initFn, initial);
+  if (definingInputs) scope.$_target.$definingInputs = definingInputs;
+  return scope;
+}
+
+function scopeDisposal(scope) {
+  var t = scope.$_target;
+  if (t.$title != null) {
+    t.$title = null;
+    propagateTitleChange(scope);
+  }
+  t.$dirty = false;
+  t.$scheduled = false;
+  t.$vnode = null;
+  var el = t.$element;
+  if (el) el.__scope = null;
+  t.$element = null;
+}
+
+function propagateTitleChange(scope) {
+  var t = scope.$_target;
+
+  var chain = [];
+  if (t.$title != null) chain.push(t.$title);
+  if (t.$titles.length > 0) chain = chain.concat(t.$titles);
+
+  if (!t.$parentScope) {
+    documentTitle(chain);
+    return;
+  }
+
+  var propagating = chain;
+  var current = t.$parentScope;
+  while (current) {
+    var ct = current.$_target;
+    var changed = !titlesEqual(propagating, ct.$titles);
+    ct.$titles = propagating;
+    if (changed) {
+      if (ct.$deps && ct.$deps.has("$titles")) markDirty(current);
+    }
+    if (!ct.$parentScope) {
+      var fullChain = [];
+      if (ct.$title != null) fullChain.push(ct.$title);
+      fullChain = fullChain.concat(ct.$titles);
+      documentTitle(fullChain);
+      return;
+    }
+    propagating = [];
+    if (ct.$title != null) propagating.push(ct.$title);
+    propagating = propagating.concat(ct.$titles);
+    current = ct.$parentScope;
+  }
+}
+
+// === Scope Utilities ===
 
 function __findScopeProxy(elm) {
   var el = elm;
   while (el) {
-    if (el.__scope) return el.__scope.scope;
+    if (el.__scope) return el.__scope;
     el = el.parentElement;
   }
   return null;
@@ -101,9 +305,21 @@ window.__findScopeProxy = __findScopeProxy;
 
 function __handlerScope(scope) {
   return new Proxy(scope, {
-    has() { return true; },
+    has(t, prop) {
+      if (typeof prop === "string" && prop.charAt(0) === "$" && prop.charAt(1) === "$") return prop in t;
+      return true;
+    },
     get(target, prop) {
-      return prop in target ? target[prop] : window[prop];
+      if (Object.prototype.hasOwnProperty.call(target, prop)) return target[prop];
+      switch (prop) {
+        case "$user": return window.$user;
+        case "$page": return window.$page;
+        case "window": return window;
+        default:
+          if (typeof prop !== "string" || prop.charAt(0) === "$") return undefined;
+          if (SCOPE_GLOBALS.indexOf(prop) !== -1) return window[prop];
+          return undefined;
+      }
     }
   });
 }
@@ -112,11 +328,9 @@ window.__handlerScope = __handlerScope;
 function __rerenderOnEvent(elm) {
   var el = elm;
   while (el) {
-    if (el.__scope && el.__tpl) {
-      el.__scope.clearDirty();
-      __rerendering = true;
-      try { renderScope(el, el.__tpl, el.__scope); }
-      finally { __rerendering = false; }
+    if (el.__scope && el.__scope.$renderFn) {
+      el.__scope.$_target.$dirty = false;
+      el.__scope.$renderFn(el.__scope);
       return;
     }
     el = el.parentElement;
@@ -124,14 +338,23 @@ function __rerenderOnEvent(elm) {
 }
 window.__rerenderOnEvent = __rerenderOnEvent;
 
-function renderScope(element, tplFn, scopeTracker) {
-  try {
-    var vnode = tplFn(scopeTracker.scope);
-  } catch (e) {
-    console.error("renderScope template error:", e);
-    return;
+// === Render ===
+
+function __flattenVnodes(arr) {
+  var out = [];
+  for (var i = 0; i < arr.length; i++) {
+    if (Array.isArray(arr[i])) {
+      var flat = __flattenVnodes(arr[i]);
+      for (var j = 0; j < flat.length; j++) out.push(flat[j]);
+    } else if (arr[i] != null) {
+      out.push(arr[i]);
+    }
   }
-  if (Array.isArray(vnode)) vnode = h("div", vnode);
+  return out;
+}
+
+function patchVdomInto(element, vnode) {
+  if (Array.isArray(vnode)) vnode = h("div", __flattenVnodes(vnode));
   if (element._childVdom) {
     element._childVdom = __patch(element._childVdom, vnode || h("div"));
   } else {
@@ -140,12 +363,70 @@ function renderScope(element, tplFn, scopeTracker) {
     element.appendChild(mount);
     element._childVdom = __patch(mount, vnode || h("div"));
   }
-  __initScopedForms(element);
+  return vnode;
 }
 
-var __RESERVED_KEYS = { $rest: true, $user: true, $page: true };
+// makeRenderFn creates a renderFn closure for a given element + template.
+// renderFn(scope): creates scope when null, renders, returns scope.
+function makeRenderFn(element, tplFn) {
+  return function renderFn(scope) {
+    var vnode;
+    var prevSlotScope = window.__slotScope;
+    window.__slotScope = scope;
+    try {
+      vnode = tplFn(scope);
+    } catch (e) {
+      console.error("renderScope template error:", e);
+      window.__slotScope = prevSlotScope;
+      return scope;
+    }
+    window.__slotScope = prevSlotScope;
+    vnode = patchVdomInto(element, vnode);
+    scope.$_target.$vnode = vnode;
+    initScopedForms(element);
+    if (__router && element !== __router) {
+      var rootPage = __router.querySelector("pug-page");
+      if (rootPage && rootPage.__scope) {
+        var _rt = rootPage.__scope.$_target;
+        var _rc = [];
+        if (_rt.$title) _rc.push(_rt.$title);
+        if (_rt.$titles) _rc = _rc.concat(_rt.$titles);
+        documentTitle(_rc);
+      }
+    }
+    return scope;
+  };
+}
 
-async function fetchIntoScope(restUrl, scopeTracker, fetchOpts) {
+// === Title Chain ===
+
+function titlesEqual(a, b) {
+  if (!a || !b) return !a && !b;
+  if (a.length !== b.length) return false;
+  for (var i = 0; i < a.length; i++) {
+    if (a[i].label !== b[i].label || a[i].href !== b[i].href) return false;
+  }
+  return true;
+}
+
+function documentTitle(titles) {
+  if (!titles || titles.length === 0) { document.title = ""; return; }
+  var current = "";
+  for (var i = 0; i < titles.length; i++) {
+    var label = titles[i].label;
+    if (!label) continue;
+    if (!current) {
+      current = label;
+    } else {
+      current = (document.titleFn || function (p, c) { return p + " | " + c; })(label, current);
+    }
+  }
+  document.title = current;
+}
+
+// === REST ===
+
+async function fetchIntoScope(restUrl, scope, fetchOpts) {
   var url = new URL(restUrl, window.location.href);
   var sameOrigin = url.origin === window.location.origin;
   var opts = fetchOpts || { headers: { "Accept": "application/json" } };
@@ -160,92 +441,107 @@ async function fetchIntoScope(restUrl, scopeTracker, fetchOpts) {
   try {
     res = await fetch(url.href, opts);
   } catch (e) {
-    scopeTracker.scope.$rest = { status: 0, data: { error: e.message }, loading: false, headers: {} };
+    scope.$_target.$rest = { status: 0, data: { error: e.message }, loading: false, headers: {} };
     return null;
   }
 
   var data = null;
   try { data = await res.json(); } catch (e) { /* non-JSON response */ }
 
-  var h = res.headers;
-  scopeTracker.scope.$rest = {
+  var hdrs = res.headers;
+  scope.$_target.$rest = {
     status: res.status,
     data: data,
     loading: false,
     get headers() {
       var obj = {};
-      h.forEach(function(v, k) { obj[k] = v; });
+      hdrs.forEach(function (v, k) { obj[k] = v; });
       return obj;
     }
   };
   if (res.ok && data) {
-    for (var key in data) {
-      if (!__RESERVED_KEYS[key]) scopeTracker.scope[key] = data[key];
-    }
+    mergeRestData(scope, data);
   }
 
   return res;
 }
 
-function __initFormScope(form) {
-  var rest = form.getAttribute("rest");
-  form.__scope = createScope({ $user: window.$user, $page: window.__pugpage_page || {}, $rest: { status: null, data: null } });
+function mergeRestData(scope, data) {
+  if (!data || typeof data !== "object" || Array.isArray(data)) return;
+  for (var key in data) {
+    if (key.charAt(0) !== "$") {
+      scope[key] = data[key];
+    }
+  }
+}
 
-  if (form.__tpl) renderScope(form, form.__tpl, form.__scope);
+// === Scoped Forms ===
+
+function initFormScope(form) {
+  var rest = form.getAttribute("rest");
+  var tplFn = form.$formBodyFn;
+  var initFn = form.$formBodyInit;
+  var formBodyId = form.$formBodyId;
+  var renderFn = makeRenderFn(form, tplFn);
+  var definingInputs = { $formBodyId: formBodyId, rest: rest || null };
+
+  if (form.__scope && !shouldCreateScope(form.__scope, definingInputs)) {
+    return;
+  }
+  if (form.__scope) scopeDisposal(form.__scope);
+
+  form.__scope = createRenderScope(
+    form, null, renderFn, initFn,
+    { $titles: [], $rest: { status: null, data: null, loading: !!rest, headers: {} } }
+  );
+  form.__scope.$_target.$definingInputs = definingInputs;
+  renderFn(form.__scope);
 
   if (rest) {
     fetchIntoScope(rest, form.__scope).then(function () {
-      if (form.__scope.isDirty()) {
-        form.__scope.clearDirty();
-        renderScope(form, form.__tpl, form.__scope);
-      }
+      form.__scope.$_target.$dirty = false;
+      renderFn(form.__scope);
     });
   }
 }
 
-function __initScopedForms(root) {
+function initScopedForms(root) {
   var forms = root.querySelectorAll("form");
   for (var i = 0; i < forms.length; i++) {
-    if (forms[i].__needsScope && !forms[i].__scope) {
-      __initFormScope(forms[i]);
+    if (forms[i].$needsFormScope) {
+      initFormScope(forms[i]);
     }
   }
 }
 
-// === Layout Stack ===
-function applyLayout(pageVdom, layoutPath) {
-  for (var i = 0; i < __layoutStack.length; i++) {
-    if (__layoutStack[i].layoutPath === layoutPath) {
-      __layoutStack.length = i + 1;
-      return __layoutStack[i];
+// === Routing ===
+
+window.renderSlot = function() {
+  var scope = window.__slotScope;
+  if (!scope) return null;
+  var el = scope.$element;
+  if (el) {
+    var chain = el.__routeChain;
+    var currentIndex = el.__routeIndex || 0;
+    var nextIndex = currentIndex + 1;
+    if (chain && nextIndex < chain.length) {
+      var entry = chain[nextIndex];
+      return h("pug-page", {
+        key: entry.key,
+        $tplFn: entry.fn,
+        $initFn: entry.initFn || null,
+        $routeChain: chain,
+        $routeIndex: nextIndex,
+        hook: PUG_PAGE_HOOK
+      });
     }
   }
-
-  var parentLayout = __layout_chain[layoutPath] || null;
-  var content = parentLayout ? applyLayout(pageVdom, parentLayout).scope.__content : pageVdom;
-
-  var layoutFn = pug_pages(layoutPath);
-  var scopeTracker = createScope({ $user: window.$user, __content: content });
-  var entry = { layoutPath: layoutPath, scope: scopeTracker, tplFn: layoutFn };
-  __layoutStack.push(entry);
-  return entry;
-}
-
-window.updatePage = onUrlChange;
-
-window.navigateTo = function (url) {
-  var targetUrl = new URL(url, window.location.href);
-  if (targetUrl.origin !== window.location.origin) {
-    window.location.assign(targetUrl.href);
-    return;
-  }
-  history.pushState(null, "", targetUrl.href);
-  onUrlChange();
+  return scope.$content || null;
 };
 
 function resolvePage(path, queryParams) {
   var pageFn = null;
-  var pageArgs = Object.assign({}, queryParams);
+  var pageArgs = {};
 
   if (path.endsWith("/")) pageFn = pug_pages(path + "index");
   if (!pageFn) pageFn = pug_pages(path);
@@ -288,97 +584,141 @@ function resolvePage(path, queryParams) {
 
   if (!pageFn) return null;
 
-  pageArgs.$page = {
+  window.$page = {
     path: path,
     args: pageArgs.$args || [],
     params: Object.fromEntries(queryParams.entries()),
   };
 
-  return { pageFn: pageFn, pageArgs: pageArgs };
+  return { pageFn: pageFn };
 }
 
-function onUrlChange() {
-  var url = new URL(window.location.href);
-  var path = url.pathname;
-  var resolved = resolvePage(path, url.searchParams);
-  if (!resolved) return console.info("No Pug page found for path:", path);
-  var pageFn = resolved.pageFn;
-  var pageArgs = resolved.pageArgs;
-
-  var resolvedPath = null;
-  for (var rp in __layout_map) {
-    var pageCheck = pug_pages(rp);
-    if (pageCheck === pageFn) {
-      resolvedPath = rp;
-      break;
-    }
+function buildLayoutList(pageTemplate) {
+  var layouts = [];
+  var current = __layout_map[pageTemplate] || null;
+  while (current) {
+    layouts.unshift(current);
+    current = __layout_chain[current] || null;
   }
-  if (!resolvedPath) resolvedPath = path;
-
-  var targetLayout = __layout_map[resolvedPath] || null;
-
-  if (!__pageRoot) {
-    __pageRoot = document.createElement("div");
-    __pageRoot.id = "__pug_page__";
-    document.body.innerHTML = "";
-    document.body.appendChild(__pageRoot);
-  }
-
-  var pageVdom = pageFn(pageArgs);
-
-  if (targetLayout) {
-    var entry = applyLayout(pageVdom, targetLayout);
-    entry.scope.scope.__content = pageVdom;
-    entry.scope.scope.$page = pageArgs.$page || {};
-    entry.scope.clearDirty();
-    __pageRoot.__tpl = entry.tplFn;
-    __pageRoot.__scope = entry.scope;
-  } else {
-    __layoutStack.length = 0;
-    var passScope = createScope({ $user: window.$user, $page: pageArgs.$page || {}, __content: pageVdom });
-    __pageRoot.__tpl = function (scope) { return scope.__content; };
-    __pageRoot.__scope = passScope;
-  }
-
-  renderScope(__pageRoot, __pageRoot.__tpl, __pageRoot.__scope);
-  __initScopedForms(document.body);
+  return layouts;
 }
 
-// === pug-page Composition (T17) ===
+// === pug-router Custom Element ===
+
+var __router = null;
+
+class PugRouterElement extends HTMLElement {
+  constructor() {
+    super();
+    this._childVdom = null;
+    this.__scope = null;
+  }
+
+  connectedCallback() {
+    if (__router === this) return;
+    __router = this;
+    onUrlChange();
+  }
+}
+
+// === pug-page Custom Element ===
+
 class PugPageElement extends HTMLElement {
   constructor() {
     super();
     this._childVdom = null;
+    this._loaded = false;
+    this.__scope = null;
+    this.__tplFn = null;
   }
 
   connectedCallback() {
-    if (this.parentNode === document.body && !__pageRoot) return;
+    // Skip shell element (first pug-page in body before router takes over)
+    if (!__router && this.parentNode === document.body && !this.__tplFn) return;
     if (this._loaded) return;
     this._loaded = true;
-    this._load();
+
+    if (this.__tplFn) {
+      // Router-driven mount: tplFn set by snabbdom hook
+      this._mountFromRouter();
+    } else {
+      // Explicit <pug-page src="..."> composition
+      this._loadFromSrc();
+    }
   }
 
-  async _load() {
+  _mountFromRouter() {
+    var rest = this.getAttribute("rest");
+    var hasFormBody = !!this.$formBodyFn;
+
+    if (hasFormBody) {
+      var renderFn = makeRenderFn(this, this.$formBodyFn);
+      this.__scope = createRenderScope(
+        this, null, renderFn, this.$formBodyInit,
+        { $titles: [], $rest: { status: null, data: null, loading: !!rest, headers: {} } }
+      );
+      renderFn(this.__scope);
+
+      if (rest) {
+        var self = this;
+        fetchIntoScope(rest, this.__scope).then(function () {
+          self.__scope.$_target.$dirty = false;
+          renderFn(self.__scope);
+        });
+      }
+    } else {
+      var renderFn = makeRenderFn(this, this.__tplFn);
+      this.__scope = createRenderScope(
+        this, null, renderFn, this.__initFn,
+        { $titles: [] }
+      );
+      renderFn(this.__scope);
+    }
+
+    if (this.parentNode === __router) {
+      var _t = this.__scope.$_target;
+      var _chain = [];
+      if (_t.$title) _chain.push(_t.$title);
+      if (_t.$titles) _chain = _chain.concat(_t.$titles);
+      documentTitle(_chain);
+    }
+  }
+
+  async _loadFromSrc() {
     var src = this.getAttribute("src");
     var rest = this.getAttribute("rest");
-    this.__scope = createScope({ $user: window.$user, $page: window.__pugpage_page || {}, $rest: { status: null, data: null, loading: true, headers: {} } });
+    var hasFormBody = !!this.$formBodyFn;
+    var tplFn = hasFormBody ? this.$formBodyFn : null;
+    var initFn = hasFormBody ? this.$formBodyInit : null;
+    var renderFn = tplFn ? makeRenderFn(this, tplFn) : null;
 
-    if (this.__tpl) renderScope(this, this.__tpl, this.__scope);
+    this.__scope = createRenderScope(
+      this, null, renderFn, initFn,
+      { $titles: [], $rest: { status: null, data: null, loading: !!(rest && !hasFormBody), headers: {} } }
+    );
 
-    if (rest) {
-      var res = await fetchIntoScope(rest, this.__scope);
-      if (res && res.status === 401) {
-        var restUrl = new URL(rest, window.location.href);
-        if (restUrl.origin === window.location.origin) {
+    if (hasFormBody) {
+      if (renderFn) renderFn(this.__scope);
+      if (rest) {
+        var self = this;
+        var res = await fetchIntoScope(rest, this.__scope);
+        if (res && res.status === 401) {
           window.$user.logout();
           return;
         }
+        self.__scope.$_target.$dirty = false;
+        renderFn(self.__scope);
       }
-      if (this.__scope.isDirty()) {
-        this.__scope.clearDirty();
-        renderScope(this, this.__tpl, this.__scope);
+    } else if (rest) {
+      var self = this;
+      var res = await fetchIntoScope(rest, this.__scope);
+      if (res && res.status === 401) {
+        window.$user.logout();
+        return;
       }
-    } else if (src) {
+    }
+
+    if (src) {
       var resolvedSrc = src;
       if (src.charAt(0) !== "/") {
         var currentPath = window.location.pathname;
@@ -388,40 +728,166 @@ class PugPageElement extends HTMLElement {
       if (resolvedSrc.endsWith(".pug")) resolvedSrc = resolvedSrc.slice(0, -4);
       var pageFn = pug_pages(resolvedSrc);
       if (pageFn) {
-        var vnode = pageFn(this.__scope.scope);
-        if (this._childVdom) {
-          this._childVdom = __patch(this._childVdom, vnode);
-        } else {
-          this.innerHTML = "";
-          var mount = document.createElement("div");
-          this.appendChild(mount);
-          this._childVdom = __patch(mount, vnode);
-        }
+        this.__tplFn = pageFn;
+        var srcRenderFn = makeRenderFn(this, pageFn);
+        this.__scope.$_target.$renderFn = srcRenderFn;
+        srcRenderFn(this.__scope);
       }
     }
   }
 }
 
-// === Event Listeners ===
-customElements.define("pug-page", PugPageElement);
+// Snabbdom hook data for router-driven pug-page elements
+var PUG_PAGE_HOOK = {
+  create: function (_, vn) {
+    vn.elm.__tplFn = vn.data.$tplFn || null;
+    vn.elm.__initFn = vn.data.$initFn || null;
+    vn.elm.__routeChain = vn.data.$routeChain || null;
+    vn.elm.__routeIndex = vn.data.$routeIndex || 0;
+  },
+  update: function (oldVn, vn) {
+    vn.elm.__tplFn = vn.data.$tplFn || null;
+    vn.elm.__initFn = vn.data.$initFn || null;
+    vn.elm.__routeChain = vn.data.$routeChain || null;
+    vn.elm.__routeIndex = vn.data.$routeIndex || 0;
+    if (vn.elm.__scope && vn.elm.__tplFn && vn.elm._loaded) {
+      vn.elm.__scope.$_target.$dirty = false;
+      var renderFn = makeRenderFn(vn.elm, vn.elm.__tplFn);
+      vn.elm.__scope.$_target.$renderFn = renderFn;
+      renderFn(vn.elm.__scope);
+      if (vn.elm.parentNode === __router) {
+        var _pt = vn.elm.__scope.$_target;
+        var _pc = [];
+        if (_pt.$title) _pc.push(_pt.$title);
+        if (_pt.$titles) _pc = _pc.concat(_pt.$titles);
+        documentTitle(_pc);
+      }
+    }
+  }
+};
+
+// === Route Rendering ===
+
+function buildRouteEntry(pageFn, layoutList, routeKey, pageTemplate) {
+  var routeChain = [];
+
+  for (var i = 0; i < layoutList.length; i++) {
+    var layoutTemplate = layoutList[i];
+    var layoutFn = pug_pages(layoutTemplate);
+    var layoutInitFn = pug_pages.__init && pug_pages.__init[layoutTemplate] ? pug_pages.__init[layoutTemplate] : null;
+    if (layoutFn) {
+      routeChain.push({ key: "layout:" + layoutTemplate, fn: layoutFn, initFn: layoutInitFn });
+    }
+  }
+
+  routeChain.push({ key: "route:" + routeKey + ":" + pageTemplate, fn: pageFn });
+
+  var first = routeChain[0];
+  return h("pug-page", {
+    key: first.key,
+    $tplFn: first.fn,
+    $initFn: first.initFn || null,
+    $routeChain: routeChain,
+    $routeIndex: 0,
+    hook: PUG_PAGE_HOOK
+  });
+}
+
+function onUrlChange() {
+  var url = new URL(window.location.href);
+  var path = url.pathname;
+  var resolved = resolvePage(path, url.searchParams);
+  if (!resolved) return console.info("No Pug page found for path:", path);
+
+  var pageFn = resolved.pageFn;
+
+  // Find the resolved page template key
+  var resolvedPath = null;
+  var paths = pug_pages.__paths || [];
+  for (var i = 0; i < paths.length; i++) {
+    if (pug_pages(paths[i]) === pageFn) {
+      resolvedPath = paths[i];
+      break;
+    }
+  }
+  if (!resolvedPath) resolvedPath = path;
+
+  // Build layout list
+  var layoutList = buildLayoutList(resolvedPath);
+
+  var routeKey = url.pathname + url.search;
+
+  var routeEntry = buildRouteEntry(pageFn, layoutList, routeKey, resolvedPath);
+
+  // Patch the router
+  if (!__router) {
+    __router = document.createElement("pug-router");
+    document.body.innerHTML = "";
+    document.body.appendChild(__router);
+    __router._childVdom = null;
+  }
+
+  if (__router._childVdom) {
+    __router._childVdom = __patch(__router._childVdom, routeEntry);
+  } else {
+    __router.innerHTML = "";
+    var mount = document.createElement("div");
+    __router.appendChild(mount);
+    __router._childVdom = __patch(mount, routeEntry);
+  }
+
+  initScopedForms(__router);
+}
+
+// === Navigation ===
+
+window.navigateTo = function (url) {
+  var targetUrl = new URL(url, window.location.href);
+  if (targetUrl.origin !== window.location.origin) {
+    window.location.assign(targetUrl.href);
+    return;
+  }
+  history.pushState(null, "", targetUrl.href);
+  onUrlChange();
+};
+
+window.updatePage = function () {
+  if (!__router) return;
+  var scopes = __router.querySelectorAll("[__scope]");
+  for (var i = 0; i < scopes.length; i++) {
+    var scope = scopes[i].__scope;
+    if (scope && scope.$renderFn && scope.$deps) {
+      var deps = scope.$deps;
+      if (deps.has("$user") || deps.has("$page")) {
+        markDirty(scope);
+      }
+    }
+  }
+};
 
 // === Component Registration ===
+
 function __resolveComponentTemplate(compName) {
-  var currentPath = window.location.pathname;
-  var dir = currentPath.substring(0, currentPath.lastIndexOf("/") + 1);
-  var localPath = dir + compName;
-  var tplFn = pug_pages(localPath);
+  var tplFn = pug_components(compName);
   if (tplFn) return tplFn;
   tplFn = pug_pages("/components/" + compName);
-  return tplFn;
+  if (tplFn) return tplFn;
+  var allPaths = (pug_components.__paths || []).concat(pug_pages.__paths || []);
+  for (var i = 0; i < allPaths.length; i++) {
+    if (allPaths[i].endsWith("/" + compName)) {
+      tplFn = pug_pages(allPaths[i]) || pug_components(allPaths[i]);
+      if (tplFn) return tplFn;
+    }
+  }
+  return null;
 }
 
 function __registerComponents() {
-  if (!pug_pages.__paths) return;
-  var paths = pug_pages.__paths;
+  // Register from both component and page registries
+  var allPaths = (pug_components.__paths || []).concat(pug_pages.__paths || []);
   var registered = {};
-  for (var i = 0; i < paths.length; i++) {
-    var parts = paths[i].split("/");
+  for (var i = 0; i < allPaths.length; i++) {
+    var parts = allPaths[i].split("/");
     var name = parts[parts.length - 1];
     if (name.indexOf("-") === -1) continue;
     if (registered[name]) continue;
@@ -449,51 +915,46 @@ function __createComponentClass(compName) {
     _render() {
       var tplFn = __resolveComponentTemplate(compName);
       if (!tplFn) return;
-      var initial = {
-        $user: window.$user,
-        $page: window.__pugpage_page || {}
-      };
-      if (this.__pugpage_attrs) {
-        for (var k in this.__pugpage_attrs) {
-          initial[k] = this.__pugpage_attrs[k];
+      var initial = { $titles: [] };
+      if (this.$attrs) {
+        for (var k in this.$attrs) {
+          initial[k] = this.$attrs[k];
         }
       }
-      initial.__content = this.__pugpage_content || null;
-      this.__tpl = tplFn;
-      this.__scope = createScope(initial);
-      renderScope(this, this.__tpl, this.__scope);
-      __initScopedForms(this);
+      initial.$content = this.$content || null;
+      var renderFn = makeRenderFn(this, tplFn);
+      this.__scope = createRenderScope(this, null, renderFn, null, initial);
+      renderFn(this.__scope);
+      initScopedForms(this);
     }
     _update() {
       if (!this.__scope) return;
-      var target = this.__scope.target;
-      if (this.__pugpage_attrs) {
-        for (var k in this.__pugpage_attrs) {
-          target[k] = this.__pugpage_attrs[k];
+      if (this.$attrs) {
+        for (var k in this.$attrs) {
+          this.__scope[k] = this.$attrs[k];
         }
       }
-      target.__content = this.__pugpage_content || null;
-      renderScope(this, this.__tpl, this.__scope);
+      this.__scope.$content = this.$content || null;
+      this.__scope.$renderFn(this.__scope);
     }
   };
 }
 
-__registerComponents();
+// === Boot ===
 
-window.addEventListener("popstate", onUrlChange);
-
-// === Initialize ===
 function __boot() {
   document.body.addEventListener("click", function (event) {
+    if (event.defaultPrevented) return;
     if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
     var target = event.target.closest("a");
     if (!target || !target.hasAttribute("href")) return;
+    var href = target.getAttribute("href");
+    if (!href || href.charAt(0) === "#") { event.preventDefault(); return; }
     if (target.getAttribute("target") === "_blank") return;
+    if (target.hasAttribute("download")) return;
     if (target.origin !== window.location.origin) return;
     event.preventDefault();
-    var href = target.getAttribute("href");
-    if (href && href.charAt(0) !== "#")
-      window.navigateTo(target.href);
+    window.navigateTo(target.href);
   });
 
   document.body.addEventListener("submit", async function (event) {
@@ -528,10 +989,8 @@ function __boot() {
       }
 
       var res = await fetchIntoScope(fetchUrl, form.__scope, fetchOpts);
-      if (form.__scope.isDirty()) {
-        form.__scope.clearDirty();
-        renderScope(form, form.__tpl, form.__scope);
-      }
+      form.__scope.$_target.$dirty = false;
+      form.__scope.$renderFn(form.__scope);
 
       if (href && res && res.ok) {
         window.navigateTo(href);
@@ -571,7 +1030,7 @@ function __boot() {
 
       if (response.ok) {
         var detail = { headers: {} };
-        response.headers.forEach(function(v, k) { detail.headers[k] = v; });
+        response.headers.forEach(function (v, k) { detail.headers[k] = v; });
         try { detail.data = await response.json(); } catch (e) { /* ignore */ }
         form.dispatchEvent(new CustomEvent("rest", { detail: detail, bubbles: true }));
         if (href) window.navigateTo(href);
@@ -581,8 +1040,16 @@ function __boot() {
     }
   });
 
+  window.addEventListener("popstate", onUrlChange);
+
   onUrlChange();
 }
+
+// === Register Custom Elements + Initialize ===
+
+customElements.define("pug-router", PugRouterElement);
+customElements.define("pug-page", PugPageElement);
+__registerComponents();
 
 if (document.readyState === "loading") {
   document.addEventListener("DOMContentLoaded", __boot);

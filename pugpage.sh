@@ -1,5 +1,5 @@
 #!/bin/sh
-VERSION="1.9.11"
+VERSION="1.10.0"
 BASE="https://cdn.jsdelivr.net/gh/wiwiwa/pugpage@${VERSION}"
 
 set -e

@@ -6,8 +6,8 @@ pug-page(rest="/$$dev/api/echo")
   h1 Render Test
   .rest-status Result: #{result}
 
-  a.toggle-slot(onclick="showSlot=!showSlot") Toggle Slot
-  a.inc(onclick="count=count+1") Inc
+  div: a.toggle-slot(onclick="showSlot=!showSlot") Toggle Slot
+  div: a.inc(onclick="count=count+1") Inc
 
   if showSlot
     render-box(title="Slot Test")

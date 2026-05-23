@@ -20,6 +20,7 @@ See [Architecture.md](./Architecture.md) for full system design. Key ownership r
 - Compiler behavior belongs in `src/compiler.ts` and `src/compiler/`
 - Browser behavior belongs in `src/render/render.js`; update `release/render.min.js` only when runtime code changes
 - Do not regenerate `release/render.min.js` for compiler-only changes
+- Do not regenerate `release/render.min.js` during development iterations — only regenerate when performing a release
 
 ## Documentation Style
 

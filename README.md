@@ -15,8 +15,8 @@ PugPage is a command-line tool for bundling and serving Pug files, enabling rapi
     - `$titles` — reactive array of `{label, href}` for building navigation.
     - `document.title` merges via `document.titleFn`. Default: child first, separator `" | "`.
 - **Form Handling**
-  - Usage `form(rest='/api/profile' action='/api/user/1' href='/user/1')` — fetches initial data from `rest`, submit to `action`, redirect to `href`.
-    - both `rest` and `action` updates scope data
+  - Usage `form(rest action='/api/user/1' href='/user/1')` — `action` is required; empty `rest` fetches initial data with `GET action`; submit goes to `action`; redirect to `href`.
+    - both initial `rest` fetch and `action` submit update scope data
 - **Reactive Event Handler**
   - Typical we just assign new values to data in scope, and DOM nodes are auto updated
 - **Variables**
@@ -32,7 +32,7 @@ PugPage is a command-line tool for bundling and serving Pug files, enabling rapi
     - `path`: Page path.
     - `args`: Array of arguments (see URL handling).
     - `params`: Query parameters (e.g., `/user/?id=1` returns `{id: '1'}`).
-  - `$rest`: Fetch result of url `rest` — `null` before fetch, `{ status, data }` after.
+  - `$rest`: Fetch result for REST-backed pages and forms.
 - **Tag Attributes**
   - `$role`: String or array. Renders tag only if `$user.roles` matches.
     - Example: `div($role='USER_ADMIN')` renders only for users with the `USER_ADMIN` role.

@@ -1,11 +1,18 @@
-title(href="/user") User #{$args[0]}
+:init
+  editing = false
 
 pug-page(rest=`/$$dev/api/user/${$args[0]}`)
+  title(href="/user/"+id) User #{name}
   .sass-card
     h2.sass-title User Details
     li User ID: #{id}
     li User Name: #{name}
     li User Email: #{email}
+    a(onclick="editing=!editing") Edit
+  if editing
+    h3 Edit User
+    page-dialog
+      user-edit
 
 :css
   .sass-card .sass-title { color: rgb(134, 0, 0); }

@@ -63,17 +63,17 @@ Global function that merges title segments into `document.title`.
 
 ```js
 // Default: child first
-document.titleFn = (parent, child) => child + " | " + parent
+document.titleFn = (label, accumulated) => accumulated + " | " + label
 ```
 
 Override to customize:
 
 ```js
 // Parent first
-document.titleFn = (parent, child) => parent + " / " + child
+document.titleFn = (label, accumulated) => label + " / " + accumulated
 
-// Override (parent only)
-document.titleFn = (parent, child) => parent
+// Override with the current parent label only
+document.titleFn = (label, accumulated) => label
 ```
 
 `document.title` is updated when any scope's title changes.
@@ -96,14 +96,17 @@ document.title = "User 1000 | Users | MyApp"
 ## Form Handling
 
 ```pug
-form(rest='/api/profile' action='/api/user/1' href='/user/1')
+form(rest action='/api/user/1' href='/user/1')
 ```
 
-- `rest` — URL for initial data fetch
-- `action` — URL for form submission
+- `action` — required URL for form submission
+- `rest` — optional initial data fetch
+  - absent — no initial fetch
+  - present without a value — initial `GET action`
+  - present with a value — initial `GET rest`
 - `href` — redirect URL after successful submit
 
-Both `rest` and `action` responses update `$rest`. If response `data` is a plain object, PugPage also shallow-merges safe fields into the current scope.
+The initial `rest` request and the submit `action` response both update `$rest`. If response `data` is a plain object, PugPage also shallow-merges safe fields into the current scope.
 
 ---
 
@@ -111,7 +114,7 @@ Both `rest` and `action` responses update `$rest`. If response `data` is a plain
 
 ### Scope
 
-Every scope (page, layout, `pug-page`, form, component) is a reactive proxy. Assigning a value triggers a microtask-batched re-render automatically.
+Every scope (page, layout, `pug-page`, form, component) is reactive. Templates run through a scope proxy, and assigning a value triggers a microtask-batched re-render automatically.
 
 ### `:init` Block
 
@@ -127,7 +130,7 @@ button(onclick='count++') Clicked #{count} times
 
 Template body only reads scope and produces VDOM — no value initialization in the template itself. This prevents re-renders from overwriting handler-set values.
 
-Route page `:init` runs once per route render. Layout `:init` runs once per layout scope lifetime; reused cached layouts do not rerun `:init` on navigation. `pug-page`, form, and custom component `:init` blocks run once per element/component scope lifetime.
+Route page `:init` runs once per route path scope lifetime. Query-only changes update `$page.params` without recreating the route page scope. Layout `:init` runs once per layout scope lifetime; reused layouts do not rerun `:init` on navigation. `pug-page`, form, and custom component `:init` blocks run once per element/component scope lifetime.
 
 ### Event Handlers
 
@@ -169,7 +172,7 @@ Array of `{label, href}` objects for the title chain. Set by `title` tags, reada
 
 ### `$rest`
 
-Fetch result of URL `rest`. `$rest` is always an object.
+Fetch result for REST-backed pages and forms. `$rest` is always an object.
 
 Before a `<pug-page rest>` request finishes:
 
@@ -177,7 +180,7 @@ Before a `<pug-page rest>` request finishes:
 { status: null, data: null, loading: true, headers: {} }
 ```
 
-Before a `<form rest>` request or submit starts:
+Before a form initial `rest` request or submit starts:
 
 ```js
 { status: null, data: null, loading: false, headers: {} }
@@ -209,7 +212,7 @@ div($lang='CN') Chinese content
 
 ## Layout File `layout.pug`
 
-When rendering a page, `layout.pug` in the current or parent directories is automatically applied. Tag `slot` is replaced by rendered content of sub-layout or final page.
+When rendering a page, `layout.pug` in the current or parent directories is automatically applied. Tag `slot` renders the next page host in the resolved layout/page chain.
 
 Use `extends my-layout` to specify a custom layout file (resolved relative to the page). Use `extends NONE` to disable layout auto-application.
 

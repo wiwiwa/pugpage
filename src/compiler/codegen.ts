@@ -13,29 +13,31 @@ let __urlPath = "";
 let __styleIndex = 0;
 let __hasScopedStyles = false;
 
-export function generateCode(ast: PugASTNode, urlPath: string): { code: string; hasScopedStyles: boolean } {
+export function generateCode(ast: PugASTNode, urlPath: string): { code: string; initCode: string; hasScopedStyles: boolean } {
   __urlPath = urlPath;
   __styleIndex = 0;
   __hasScopedStyles = false;
-  const { exprs, stmts } = generateBlock(ast);
+  const { exprs, stmts, initStmts } = generateBlock(ast);
 
   const preamble = stmts.length > 0 ? stmts.join(";\n") + ";\n" : "";
 
   let returnExpr: string;
   if (exprs.length === 0) {
-    returnExpr = 'return h("div");';
+    returnExpr = 'return window.$h("div");';
   } else if (exprs.length === 1) {
     returnExpr = `return ${exprs[0]};`;
   } else {
-    returnExpr = `return h("div", [\n  ${exprs.join(",\n")}\n]);`;
+    returnExpr = `return window.$h("div", [\n  ${exprs.join(",\n")}\n]);`;
   }
 
   const code = preamble + returnExpr;
-  return { code, hasScopedStyles: __hasScopedStyles };
+  const initCode = initStmts.length > 0 ? initStmts.join(";\n") + ";" : "";
+  return { code, initCode, hasScopedStyles: __hasScopedStyles };
 }
 interface BlockResult {
   exprs: string[];
   stmts: string[];
+  initStmts: string[];
 }
 
 function blockToExpr(result: BlockResult): string {
@@ -44,12 +46,12 @@ function blockToExpr(result: BlockResult): string {
   }
   if (result.stmts.length === 0) {
     if (result.exprs.length === 1) return result.exprs[0];
-    return `[${result.exprs.join(", ")}]`;
+    return `[].concat(${result.exprs.join(", ")})`;
   }
   const innerStmts = result.stmts.join("; ") + ";";
   const innerRet = result.exprs.length === 1
     ? `return ${result.exprs[0]};`
-    : `return [${result.exprs.join(", ")}];`;
+    : `return [].concat(${result.exprs.join(", ")});`;
   return `(function() { ${innerStmts} ${innerRet} })()`;
 }
 
@@ -63,6 +65,18 @@ function extractTextBlock(node: PugASTNode): string {
     .filter((n) => n.type === "Text")
     .map((n) => n.val ?? "")
     .join("");
+}
+
+function buildInlineText(nodes: PugASTNode[]): string {
+  const parts: string[] = [];
+  for (const n of nodes) {
+    if (n.type === "Text") {
+      parts.push(JSON.stringify(n.val ?? ""));
+    } else if (n.type === "Code" && n.buffer) {
+      parts.push(`String(window.$v(function(){ return ${n.val} })||"")`);
+    }
+  }
+  return parts.length > 0 ? parts.join("+") : '""';
 }
 
 function isScopedStyle(node: PugASTNode): boolean {
@@ -80,13 +94,13 @@ function emitCustomTagData(node: PugASTNode, dataParts: string[], blockResult: B
     .filter(a => a.name !== "$role" && a.name !== "$lang" && a.name !== "class" && a.name !== "id")
     .map(a => '"' + a.name + '": ' + a.val);
   if (compAttrs.length > 0) {
-    dataParts.push("__attrs: {" + compAttrs.join(", ") + "}");
+    dataParts.push("$attrs: {" + compAttrs.join(", ") + "}");
   }
   if (blockResult.exprs.length > 0 || blockResult.stmts.length > 0) {
     const childrenExpr = blockToExpr(blockResult);
-    dataParts.push("__content: " + childrenExpr);
+    dataParts.push("$content: " + childrenExpr);
   }
-  const syncProps = "vn.elm.__pugpage_attrs=vn.data.__attrs;vn.elm.__pugpage_content=vn.data.__content";
+  const syncProps = "vn.elm.$attrs=vn.data.$attrs;vn.elm.$content=vn.data.$content";
   dataParts.push(`hook:{create:(_,vn)=>{${syncProps}},update:(_,vn)=>{${syncProps};if(vn.elm._update)vn.elm._update()}}`);
 }
 
@@ -111,12 +125,13 @@ function makeStyleExpr(css: string, scoped: boolean): string {
   if (scoped) __hasScopedStyles = true;
   const input = scoped ? scopeCss(css, __urlPath).css : css;
   const styleId = hashString(__urlPath + ":" + idx + ":" + (scoped ? "s" : "g") + ":" + input);
-  return `h("style", { key: "${styleId}", attrs: { "data-pugpage-style": "${styleId}" } }, ${JSON.stringify(input)})`;
+  return `window.$h("style", { key: "${styleId}", attrs: { "data-pugpage-style": "${styleId}" } }, ${JSON.stringify(input)})`;
 }
 
 function generateBlock(node: PugASTNode): BlockResult {
   const exprs: string[] = [];
   const stmts: string[] = [];
+  const initStmts: string[] = [];
   let inlineParts: string[] = [];
 
   const flushInline = () => {
@@ -135,7 +150,7 @@ function generateBlock(node: PugASTNode): BlockResult {
       case "Code": {
         if (child.buffer) {
           if (child.mustEscape) {
-            inlineParts.push(`__s(__v(function(){ return ${child.val!} }))`);
+            inlineParts.push(`window.$s(window.$v(function(){ return ${child.val!} }))`);
           } else {
             flushInline();
             exprs.push(rawHtmlSpan(child.val!));
@@ -151,8 +166,14 @@ function generateBlock(node: PugASTNode): BlockResult {
         if (child.name === "style") {
           const css = extractTextBlock(child);
           if (css) exprs.push(makeStyleExpr(css, isScopedStyle(child)));
+        } else if (child.name === "title") {
+          const hrefAttr = child.attrs?.find((a) => a.name === "href");
+          const hrefPart = hrefAttr ? (isStaticString(hrefAttr.val!) ? JSON.stringify(extractString(hrefAttr.val!)) : `window.$v(function(){ return ${hrefAttr.val} })`) : "null";
+          const hasCode = child.block?.nodes?.some((n) => n.type === "Code");
+          const labelPart = hasCode ? buildInlineText(child.block!.nodes!) : JSON.stringify(extractTextBlock(child));
+          stmts.push(`var $$title={label:String(${labelPart}||""),href:${hrefPart}};$title=$$title`);
         } else if (child.name === "slot" && !(child.attrs?.length) && isBlockEmpty(child.block)) {
-          exprs.push("__content");
+          exprs.push("window.renderSlot()");
         } else {
           exprs.push(generateTag(child));
         }
@@ -218,7 +239,10 @@ function generateBlock(node: PugASTNode): BlockResult {
       }
       case "Filter": {
         flushInline();
-        if (child.name === "scss" || child.name === "sass") {
+        if (child.name === "init") {
+          const text = extractTextBlock(child);
+          if (text) initStmts.push(text);
+        } else if (child.name === "scss" || child.name === "sass") {
           const css = compileStyleFilter(child);
           if (css) exprs.push(makeStyleExpr(css, isScopedStyle(child)));
         }
@@ -238,7 +262,7 @@ function generateBlock(node: PugASTNode): BlockResult {
       }
       case "YieldBlock": {
         flushInline();
-        exprs.push("__content");
+        exprs.push("window.renderSlot()");
         break;
       }
       default: {
@@ -249,7 +273,7 @@ function generateBlock(node: PugASTNode): BlockResult {
   }
 
   flushInline();
-  return { exprs, stmts };
+  return { exprs, stmts, initStmts };
 }
 
 function generateTag(node: PugASTNode): string {
@@ -291,14 +315,14 @@ function generateTag(node: PugASTNode): string {
       if (isStaticString(a.val)) {
         attrEntries.push(`"${a.name}": ${a.val}`);
       } else {
-        attrEntries.push(`"${a.name}": __v(function(){ return ${a.val} })`);
+        attrEntries.push(`"${a.name}": window.$v(function(){ return ${a.val} })`);
       }
     }
   }
 
   const hasHrefAttr = node.attrs?.some((a) => (a as { name: string }).name === "href");
   if (node.name === "a" && !hasHrefAttr) {
-    attrEntries.unshift(`href: ""`);
+    attrEntries.unshift(`href: "#"`);
   }
 
   const dataParts: string[] = [];
@@ -306,18 +330,18 @@ function generateTag(node: PugASTNode): string {
   if (dynamicClassEntries.length > 0) dataParts.push(`class: { ${dynamicClassEntries.join(", ")} }`);
   if (eventEntries.length > 0) dataParts.push(`on: { ${eventEntries.join(", ")} }`);
 
-  const blockResult = node.block ? generateBlock(node.block) : { exprs: [] as string[], stmts: [] as string[] };
+  const blockResult = node.block ? generateBlock(node.block) : { exprs: [] as string[], stmts: [] as string[], initStmts: [] as string[] };
 
   let childrenExpr = "";
   if (blockResult.exprs.length === 1 && blockResult.stmts.length === 0) {
     childrenExpr = blockResult.exprs[0];
   } else if (blockResult.exprs.length > 1 && blockResult.stmts.length === 0) {
-    childrenExpr = `[${blockResult.exprs.join(", ")}]`;
+    childrenExpr = `[].concat(${blockResult.exprs.join(", ")})`;
   } else if (blockResult.stmts.length > 0) {
     const innerStmts = blockResult.stmts.join("; ") + ";";
     const innerRet = blockResult.exprs.length === 1
       ? `return ${blockResult.exprs[0]};`
-      : `return [${blockResult.exprs.join(", ")}];`;
+      : `return [].concat(${blockResult.exprs.join(", ")});`;
     childrenExpr = `(function(__d) { with(window.__handlerScope(__d)) { ${innerStmts} ${innerRet} } })(data)`;
   }
 
@@ -327,13 +351,18 @@ function generateTag(node: PugASTNode): string {
   const needsTpl = (node.name === "pug-page" && hasRest) ||
     (node.name === "form" && (hasRest || (hasAction && hasHref)));
   if (needsTpl && childrenExpr) {
-    // stmts path uses its own with(__handlerScope(__d)) — outer with(data) would shadow 'data'
     const hasOwnScope = blockResult.stmts.length > 0;
+    const stableId = `${__urlPath}:form:${node.line}`;
     const tplWrapper = hasOwnScope
-      ? `__tpl: function(data){return ${childrenExpr}}`
-      : `__tpl: function(data){with(data){return ${childrenExpr}}}`;
+      ? `$formBodyFn: function(data){return ${childrenExpr}}`
+      : `$formBodyFn: function(data){with(data){return ${childrenExpr}}}`;
     dataParts.push(tplWrapper);
-    dataParts.push(`hook: { create(_,vn){vn.elm.__tpl=vn.data.__tpl; vn.elm.__needsScope=true} }`);
+    dataParts.push(`$formBodyId: ${JSON.stringify(stableId)}`);
+    if (blockResult.initStmts.length > 0) {
+      const initBody = blockResult.initStmts.join(";");
+      dataParts.push(`$formBodyInit: new window.Function("data", ${JSON.stringify(`with(data){${initBody}}`)})`);
+    }
+    dataParts.push(`hook: { create(_,vn){vn.elm.$formBodyFn=vn.data.$formBodyFn;vn.elm.$formBodyId=vn.data.$formBodyId;vn.elm.$formBodyInit=vn.data.$formBodyInit;vn.elm.$needsFormScope=true} }`);
     childrenExpr = "";
   }
 
@@ -345,10 +374,10 @@ function generateTag(node: PugASTNode): string {
   const dataStr = dataParts.length > 0 ? `{ ${dataParts.join(", ")} }` : "";
 
   let hExpr: string;
-  if (dataStr && childrenExpr) hExpr = `h("${selector}", ${dataStr}, ${childrenExpr})`;
-  else if (childrenExpr) hExpr = `h("${selector}", ${childrenExpr})`;
-  else if (dataStr) hExpr = `h("${selector}", ${dataStr})`;
-  else hExpr = `h("${selector}")`;
+  if (dataStr && childrenExpr) hExpr = `window.$h("${selector}", ${dataStr}, ${childrenExpr})`;
+  else if (childrenExpr) hExpr = `window.$h("${selector}", ${childrenExpr})`;
+  else if (dataStr) hExpr = `window.$h("${selector}", ${dataStr})`;
+  else hExpr = `window.$h("${selector}")`;
 
   const conditions: string[] = [];
   if (roleCond) conditions.push(roleCond);
@@ -376,28 +405,28 @@ function buildLangCondition(val: string): string {
 
 function generateInterpolatedTag(node: PugASTNode): string {
   const tagExpr = (node as Record<string, unknown>).expr ?? '"div"';
-  const blockResult = node.block ? generateBlock(node.block) : { exprs: [] as string[], stmts: [] as string[] };
+  const blockResult = node.block ? generateBlock(node.block) : { exprs: [] as string[], stmts: [] as string[], initStmts: [] as string[] };
   const childrenExpr = blockResult.exprs.length > 0
     ? (blockResult.exprs.length === 1 ? blockResult.exprs[0] : `[${blockResult.exprs.join(", ")}]`)
     : "";
 
-  if (childrenExpr) return `h(${String(tagExpr)}, {}, ${childrenExpr})`;
-  return `h(${String(tagExpr)})`;
+  if (childrenExpr) return `window.$h(${String(tagExpr)}, {}, ${childrenExpr})`;
+  return `window.$h(${String(tagExpr)})`;
 }
 
 function generateLiteral(node: PugASTNode): string {
   const html = node.val ?? "";
   const escaped = JSON.stringify(html);
-  return `h("span", { hook: { insert(vn) { vn.elm.innerHTML = ${escaped}; } } })`;
+  return `window.$h("span", { hook: { insert(vn) { vn.elm.innerHTML = ${escaped}; } } })`;
 }
 
 function rawHtmlSpan(expr: string): string {
-  if (expr === "__content") return expr;
+  if (expr === "$content") return expr;
   return [
-    `h("span", { `,
+    `window.$h("span", { `,
     `hook: { `,
-    `insert(vn) { vn.elm.innerHTML = __s(${expr}); }, `,
-    `update(_o, vn) { vn.elm.innerHTML = __s(${expr}); } `,
+    `insert(vn) { vn.elm.innerHTML = window.$s(${expr}); }, `,
+    `update(_o, vn) { vn.elm.innerHTML = window.$s(${expr}); } `,
     `}, `,
     `rawHtml: ${expr} `,
     `})`,
@@ -410,7 +439,7 @@ function generateConditional(node: PugASTNode): string {
 
   const conBlock = node.consequent
     ? generateBlock(node.consequent)
-    : { exprs: [] as string[], stmts: [] as string[] };
+    : { exprs: [] as string[], stmts: [] as string[], initStmts: [] as string[] };
 
   let altExpr: string;
   if (node.alternate) {
@@ -438,7 +467,7 @@ function generateEach(node: PugASTNode): string {
     ? `function(${valName}, ${keyName})`
     : `function(${valName})`;
 
-  const mapExpr = `(${objExpr} || []).map(${cbArgs} { return ${bodyExpr}; })`;
+  const mapExpr = `(${objExpr} || []).flatMap(${cbArgs} { return ${bodyExpr}; })`;
 
   if (node.alternate) {
     const altExpr = blockToExpr(generateBlock(node.alternate));
@@ -477,7 +506,7 @@ function generateCase(node: PugASTNode): string {
     const wExpr = (w as Record<string, unknown>).expr as string;
     const bResult = w.block
       ? generateBlock(w.block)
-      : { exprs: [] as string[], stmts: [] as string[] };
+      : { exprs: [] as string[], stmts: [] as string[], initStmts: [] as string[] };
     const bodyExpr = blockToExpr(bResult);
 
     if (!wExpr || wExpr === "default") {
@@ -565,7 +594,7 @@ function generateMixinDef(node: PugASTNode): string {
 
   const body = node.block
     ? generateBlock(node.block)
-    : { exprs: [] as string[], stmts: [] as string[] };
+    : { exprs: [] as string[], stmts: [] as string[], initStmts: [] as string[] };
 
   let returnExpr: string;
   if (body.exprs.length === 0 && body.stmts.length === 0) {
