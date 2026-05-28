@@ -1,24 +1,22 @@
-title PugPage
+title(href="/") PugPage
 
 h1.mainLayout Main Layout
 
+nav.breadcrumb
+  span Navi:
+  a(href=$title.href)= $title.label
+  each item,i in $titles
+    span >>
+    if item.href
+      a(href=item.href)= item.label
+    else
+      span= item.label
+
+p
 pug-page(rest='/$$dev/api/login')
   if name
     - $user.name = name
     - $user.roles = roles
     a.logout(href="#" onclick="$user.logout()") Logout #{name}
-
-if $titles.length
-  nav.breadcrumb
-    if $title.href
-      a(href=$title.href)= $title.label
-    else
-      span= $title.label
-    each item,i in $titles
-      span >>
-      if item.href
-        a(href=item.href)= item.label
-      else
-        span= item.label
 
 slot

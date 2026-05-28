@@ -57,7 +57,11 @@ user:
       li: demo
     no: user-edit
   - has:
-      nav.breadcrumb a: "User demo"
+      nav.breadcrumb a: demo
   - click:
       a: Edit
     has: user-edit
+  - click:
+      nav.breadcrumb a: PugPage
+    no:
+      nav.breadcrumb a: demo

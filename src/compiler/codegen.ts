@@ -101,7 +101,7 @@ function emitCustomTagData(node: PugASTNode, dataParts: string[], blockResult: B
     dataParts.push("$content: " + childrenExpr);
   }
   const syncProps = "vn.elm.$attrs=vn.data.$attrs;vn.elm.$content=vn.data.$content";
-  dataParts.push(`hook:{create:(_,vn)=>{${syncProps}},update:(_,vn)=>{${syncProps};if(vn.elm._update)vn.elm._update()}}`);
+  dataParts.push(`hook:{create:(_,vn)=>{${syncProps}},insert(vn){window.__mountComponent(vn.elm)},update:(_,vn)=>{${syncProps};window.__updateComponent(vn.elm)},destroy(vn){if(vn.elm.__scope)window.scopeDisposal(vn.elm.__scope)}}`);
 }
 
 function compileStyleFilter(node: PugASTNode): string {
@@ -362,13 +362,17 @@ function generateTag(node: PugASTNode): string {
       const initBody = blockResult.initStmts.join(";");
       dataParts.push(`$formBodyInit: new window.Function("data", ${JSON.stringify(`with(data){${initBody}}`)})`);
     }
-    dataParts.push(`hook: { create(_,vn){vn.elm.$formBodyFn=vn.data.$formBodyFn;vn.elm.$formBodyId=vn.data.$formBodyId;vn.elm.$formBodyInit=vn.data.$formBodyInit;vn.elm.$needsFormScope=true} }`);
+    dataParts.push(`hook: { create(_,vn){vn.elm.$formBodyFn=vn.data.$formBodyFn;vn.elm.$formBodyId=vn.data.$formBodyId;vn.elm.$formBodyInit=vn.data.$formBodyInit;vn.elm.$needsFormScope=true}, insert(vn){window.__mountPage(vn.elm)} }`);
     childrenExpr = "";
   }
 
   if (isCustomTag(node.name!)) {
     emitCustomTagData(node, dataParts, blockResult);
     childrenExpr = "";
+  }
+
+  if (node.name === "pug-page" && !dataParts.some(p => p.includes("hook:"))) {
+    dataParts.push("hook:{insert(vn){window.__mountPage(vn.elm)}}");
   }
 
   const dataStr = dataParts.length > 0 ? `{ ${dataParts.join(", ")} }` : "";

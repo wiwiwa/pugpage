@@ -131,8 +131,8 @@ Parent render output drives child host lifecycle. Scope reuse is determined by D
 
 Snabbdom hook data on `<pug-page>`, scoped `<form>`, and component vnodes manages scope creation, update, and disposal:
 - host tags remain visible in the DOM, for example `<pug-page>` and `<user-card>`
-- host tags are registered as custom elements (`pug-router`, `pug-page`) for `connectedCallback`-driven initial mount, but lifecycle is owned by snabbdom hooks
-- create hook creates or reuses the scope via `element.__scope`
+- host tags are inert DOM elements (unregistered, no `customElements.define`); snabbdom `insert` hook triggers initial mount and scope creation
+- create hook sets template metadata on the element; insert hook creates or reuses the scope via `element.__scope`
 - destroy hook calls `scopeDisposal(scope)` — snabbdom fires destroy per removed VNode, so each scope cleans up independently
 - no DOM scan or post-patch reconciliation owns scope lifecycle
 
@@ -330,13 +330,13 @@ Scope reuse:
 Key source entry points:
 - `pug_components(name)`
 - `emitCustomTagData(node, dataParts, blockResult)`
-- `__createComponentClass(name)`
+- `emitCustomTagData(node, dataParts, blockResult)`
 
 Rules:
 - hyphenated `.pug` files become component templates
 - component templates are not URL reachable
 - component tags remain hyphenated DOM elements such as `<user-card>`
-- component hosts are registered via `customElements.define(name, __createComponentClass(name))`
+- component hosts use snabbdom `insert` hooks for scope creation and rendering (no `customElements.define`)
 - component hosts preserve their scope across attr updates
 - attr updates rerender the existing scope without rerunning `:init`
 
