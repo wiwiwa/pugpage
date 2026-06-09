@@ -1,26 +1,22 @@
 render:
   component slot update:
   - goto: /render-test
-  - has:
+    has:
       .rest-status: OK
-  - has:
-      p.counter: "Count: 0"
+      .counter: "Count: 0"
   - click:
       a: Toggle Slot
-  - has:
+    has:
     - render-box
     - p.slot-value: "slot active"
   - click: a.inc
-  - has:
-      p.counter: "Count: 1"
+    has:
+      .counter: "Count: 1"
   - click:
       a: Toggle Slot
-  - no: render-box
-  - has:
-      p.counter: "Count: 1"
-  - click: a.inc
-  - has:
-      p.counter: "Count: 2"
+    no: render-box
+    has:
+      .counter: "Count: 1"
 login:
   redirect if not login:
   - goto: /

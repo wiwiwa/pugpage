@@ -22,6 +22,7 @@
     "npm:pug-load@3": "3.0.0",
     "npm:pug-parser@6": "6.0.0",
     "npm:sass@1": "1.99.0",
+    "npm:snabbdom@3": "3.6.3",
     "npm:terser@^5.43.1": "5.47.1"
   },
   "jsr": {
@@ -414,6 +415,9 @@
         "@parcel/watcher"
       ],
       "bin": true
+    },
+    "snabbdom@3.6.3": {
+      "integrity": "sha512-W2lHLLw2qR2Vv0DcMmcxXqcfdBaIcoN+y/86SmHv8fn4DazEQSH6KN3TjZcWvwujW56OHiiirsbHWZb4vx/0fg=="
     },
     "source-map-js@1.2.1": {
       "integrity": "sha512-UXWMKhLOwVKb728IUtQPXxfYU+usdybtUrK/8uGE8CQMvrhOpwvzDBwj0QhSL7MQc7vIsISBG8VQ8+IDQxpfQA=="

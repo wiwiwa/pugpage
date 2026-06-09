@@ -4,13 +4,16 @@ pug-page(rest="/$$dev/api/echo")
     count = 0
 
   h1 Render Test
-  .rest-status Result: #{result}
+  .rest-status Rest result: #{result}
 
-  div: a.toggle-slot(onclick="showSlot=!showSlot") Toggle Slot
-  div: a.inc(onclick="count=count+1") Inc
-
-  if showSlot
-    render-box(title="Slot Test")
-      p.slot-value slot active
-
-  p.counter Count: #{count}
+  p
+    div: a.inc(onclick="count=count+1") Inc
+    .counter Count: #{count}
+  p
+    custom-tag
+      div This is a custom tag
+  p
+    a.toggle-slot(onclick="showSlot=!showSlot") Toggle Slot
+    if showSlot
+      render-box(title="Slot Test")
+        p.slot-value Slot active

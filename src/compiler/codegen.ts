@@ -366,14 +366,11 @@ function generateTag(node: PugASTNode): string {
     childrenExpr = "";
   }
 
-  if (isCustomTag(node.name!)) {
+  if (isCustomTag(node.name!))
     emitCustomTagData(node, dataParts, blockResult);
-    childrenExpr = "";
-  }
 
-  if (node.name === "pug-page" && !dataParts.some(p => p.includes("hook:"))) {
+  if (node.name === "pug-page" && !dataParts.some(p => p.includes("hook:")))
     dataParts.push("hook:{insert(vn){window.__mountPage(vn.elm)}}");
-  }
 
   const dataStr = dataParts.length > 0 ? `{ ${dataParts.join(", ")} }` : "";
 

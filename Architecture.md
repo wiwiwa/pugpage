@@ -330,12 +330,13 @@ Scope reuse:
 Key source entry points:
 - `pug_components(name)`
 - `emitCustomTagData(node, dataParts, blockResult)`
-- `emitCustomTagData(node, dataParts, blockResult)`
 
 Rules:
 - hyphenated `.pug` files become component templates
 - component templates are not URL reachable
 - component tags remain hyphenated DOM elements such as `<user-card>`
+- all hyphenated tags render children to DOM normally; children are also captured as `$content` for component templates that use `slot`
+- if no component template is registered for a tag, it behaves as a plain DOM element with children rendered normally
 - component hosts use snabbdom `insert` hooks for scope creation and rendering (no `customElements.define`)
 - component hosts preserve their scope across attr updates
 - attr updates rerender the existing scope without rerunning `:init`
