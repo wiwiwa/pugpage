@@ -1,4 +1,5 @@
 import { walk } from "@std/fs/walk";
+import { parse as parseYaml } from "@std/yaml/parse";
 import { generateCode } from "./compiler/codegen.ts";
 import { findLayouts, resolveLayout, resolveExtendsLayout, toUrlPath, isLayoutFile, isComponentFile } from "./compiler/layouts.ts";
 import { hashString } from "./compiler/css-scope.ts";
@@ -23,6 +24,28 @@ export async function compileDirectory(
 ): Promise<string> {
   const base = Deno.realPathSync(opts?.baseDir || dirPath);
   const layouts = await findLayouts(dirPath);
+
+  const i18nPath = base + "/i18n.yaml";
+  let globalI18n: Record<string, Record<string, string>> = {};
+  let langDefault = "en";
+  try {
+    const i18nSource = await Deno.readTextFile(i18nPath);
+    const parsed = parseYaml(i18nSource) as Record<string, unknown>;
+    if (parsed && typeof parsed === "object") {
+      const { lang_default, ...translations } = parsed;
+      if (lang_default && typeof lang_default === "string") {
+        langDefault = lang_default;
+      }
+      globalI18n = {};
+      for (const [key, langs] of Object.entries(translations)) {
+        if (typeof langs === "object" && langs !== null) {
+          globalI18n[key] = langs as Record<string, string>;
+        }
+      }
+    }
+  } catch {
+    // No i18n.yaml — use defaults
+  }
 
   const pageModules: { path: string; code: string; initCode: string }[] = [];
   const componentModules: { path: string; code: string; initCode: string }[] = [];
@@ -59,7 +82,7 @@ export async function compileDirectory(
     }
   }
 
-  return bundleModules(pageModules, componentModules, layoutMap, layoutChain, opts.renderUrl);
+  return bundleModules(pageModules, componentModules, layoutMap, layoutChain, opts.renderUrl, globalI18n, langDefault);
 }
 
 interface ModuleCompileResult {
@@ -156,6 +179,8 @@ function bundleModules(
   layoutMap: Record<string, string | null>,
   layoutChain: Record<string, string | null>,
   renderUrl: string,
+  globalI18n: Record<string, Record<string, string>>,
+  langDefault: string,
 ): string {
   const pageCases = generateCases(pageModules);
   const componentCases = generateCases(componentModules);
@@ -173,7 +198,9 @@ function bundleModules(
   pageInit: ${allInit},
   componentInit: ${componentInit},
   pagePaths: ${JSON.stringify(allPaths)},
-  componentPaths: ${JSON.stringify(componentPaths)}
+  componentPaths: ${JSON.stringify(componentPaths)},
+  pugI18n: ${JSON.stringify(globalI18n)},
+  langDefault: ${JSON.stringify(langDefault)}
 };
 await import("${renderUrl}");
 `;

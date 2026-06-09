@@ -1,0 +1,11 @@
+lang_default: en
+OK:
+  zh: 确定
+  zh_TW: 確定
+  jp: OK
+Cancel:
+  zh: 取消
+  jp: キャンセル
+Username:
+  zh: 用户名
+  jp: ユーザー名

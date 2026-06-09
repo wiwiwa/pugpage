@@ -54,6 +54,23 @@ PugPage is a command-line tool for bundling and serving Pug files, enabling rapi
       7. `/404.pug` (if found, `$page.args = ['system', 'user', '1', 'edit']`)
   - Clicking an `<a>` tag updates the URL.
   - Anti Page Reloading: It is expected the server hosts the production JS file to return `/index.html` when 404 page should be returned.
+- **Internationalization (i18n)**
+  - **`$T` expression** — translates text via scope Proxy:
+    - `$T.Hello` — dot access for simple keys: `p= $T.Hello`
+    - `$T["Hello #{name}"]` — bracket access for interpolated keys
+    - Works in attributes: `input(placeholder=$T.Username)`
+    - Works inline: `p #{$T.Hello}`, `button= $T.Submit`
+  - **`:i18n` block** — per-page translations in YAML format:
+    ```pug
+    :i18n
+      Hello:
+        zh: 你好  #default for zh_*
+        zh_TW: 你好
+        jp: こんにちは
+    ```
+  - **Global `i18n.yaml`** — shared translations (OK, Cancel, etc.) in project root, auto-loaded into all pages
+  - Reactive — switching `$user.lang` re-renders all translated text
+  - Cascading: component → page → layout → global `i18n.yaml`
 - **Web Component Support**
   - Third-party web components work in pug templates. Unknown tags pass through to the DOM as-is.
 - **Scoped CSS**

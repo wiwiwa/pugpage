@@ -153,6 +153,10 @@ async function runActionGroup(
             await page.locator(sel).first().waitFor({ state: "attached", timeout });
           }
         } catch {
+          if (texts) {
+            const expected = Array.isArray(texts) ? texts : [texts];
+            return `${label}: expected "${sel}" with text ${expected.map((t) => `"${t}"`).join(" or ")} to exist`;
+          }
           return `${label}: expected "${sel}" to exist`;
         }
       }

@@ -55,6 +55,8 @@ function __initRegistries() {
 
   window.__layout_map = data.layoutMap || {};
   window.__layout_chain = data.layoutChain || {};
+  window.pug_i18n = data.pugI18n || {};
+  window.__lang_default = data.langDefault || "en";
 }
 
 __initRegistries();
@@ -101,6 +103,25 @@ window.$user = {
     window.navigateTo(url);
   }
 };
+if (window.__lang_default) window.$user.lang_default = window.__lang_default;
+
+// === i18n ===
+window.$T = function $T(key, scopeI18n, scope) {
+  if (scope) scope.$user; // trigger dep tracking for reactivity
+  var lang = window.$user.lang;
+  var langDefault = window.$user.lang_default || "en";
+  var base = lang ? lang.split("_")[0] : "";
+  var entry = scopeI18n && scopeI18n[key];
+  if (!entry) return key;
+  var result = entry[lang] || (base && entry[base]) || entry[langDefault] || key;
+  if (scope && result.indexOf('#{') !== -1) {
+    result = result.replace(/#\{([^}]+)\}/g, function(_, expr) {
+      var val = scope[expr.trim()];
+      return val != null ? String(val) : "";
+    });
+  }
+  return result;
+};
 
 // === Page State ===
 window.$page = { path: "", args: [], params: {} };
@@ -138,6 +159,16 @@ function createRenderScope(element, templateKey, renderFn, initFn, initial) {
   target.$title = null;
   target.$_target = target;
 
+  var __tHolder = { __s: null };
+  target.__tProxy = new Proxy(__tHolder, {
+    get(t, key) {
+      if (typeof key !== "string") return undefined;
+      t.__s.$user;
+      return window.$T(key, t.__s.$i18n, t.__s);
+    },
+    set() { throw new Error("Cannot assign to T"); }
+  });
+
   var scope = new Proxy(target, {
     has(t, prop) {
       if (typeof prop === "string" && prop.charAt(0) === "$" && prop.charAt(1) === "$") return prop in t;
@@ -149,6 +180,8 @@ function createRenderScope(element, templateKey, renderFn, initFn, initial) {
         return t[prop];
       switch (prop) {
         case "$user": t.$deps.add("$user"); return window.$user;
+        case "$i18n": return t.$i18n;
+        case "$T": return t.__tProxy;
         case "$page": t.$deps.add("$page"); return window.$page;
         case "$args": return window.$page.args;
         case "$params": return window.$page.params;
@@ -171,6 +204,8 @@ function createRenderScope(element, templateKey, renderFn, initFn, initial) {
       return true;
     }
   });
+
+  __tHolder.__s = scope;
 
   if (initFn) {
     var initProxy = new Proxy(target, {
@@ -497,6 +532,9 @@ function initFormScope(form) {
   );
   form.__scope.$_target.$definingInputs = definingInputs;
   renderFn(form.__scope);
+  var parentScope = __findScopeProxy(form.parentElement);
+  var parentI18n = parentScope ? parentScope.$_target.$i18n : window.pug_i18n;
+  __setupI18n(form.__scope, parentI18n);
 
   if (rest) {
     fetchIntoScope(rest, form.__scope).then(function () {
@@ -533,6 +571,7 @@ window.renderSlot = function() {
         $initFn: entry.initFn || null,
         $routeChain: chain,
         $routeIndex: nextIndex,
+        $i18n_parent: scope.$_target.$i18n || null,
         hook: PUG_PAGE_HOOK
       });
     }
@@ -604,6 +643,14 @@ function buildLayoutList(pageTemplate) {
   return layouts;
 }
 
+function __setupI18n(scope, parentI18n) {
+  const ownI18n = scope.$_target.$i18n;
+  if(ownI18n)
+    Object.setPrototypeOf(ownI18n, parentI18n||null);
+  else
+    scope.$_target.$i18n = Object.create(parentI18n||null);
+}
+
 // === pug-router ===
 
 var __router = null;
@@ -632,6 +679,7 @@ function __mountFromRouter(el) {
       { $titles: [], $rest: { status: null, data: null, loading: !!rest, headers: {} } }
     );
     renderFn(el.__scope);
+    __setupI18n(el.__scope, el.__i18n_parent || window.pug_i18n);
 
     if (rest) {
       fetchIntoScope(rest, el.__scope).then(function () {
@@ -646,6 +694,7 @@ function __mountFromRouter(el) {
       { $titles: [] }
     );
     renderFn(el.__scope);
+    __setupI18n(el.__scope, el.__i18n_parent || window.pug_i18n);
   }
 
   if (el.parentNode === __router) {
@@ -672,6 +721,7 @@ async function __loadFromSrc(el) {
 
   if (hasFormBody) {
     if (renderFn) renderFn(el.__scope);
+    __setupI18n(el.__scope, el.__i18n_parent || window.pug_i18n);
     if (rest) {
       var res = await fetchIntoScope(rest, el.__scope);
       if (res && res.status === 401) {
@@ -714,6 +764,7 @@ var PUG_PAGE_HOOK = {
     vn.elm.__initFn = vn.data.$initFn || null;
     vn.elm.__routeChain = vn.data.$routeChain || null;
     vn.elm.__routeIndex = vn.data.$routeIndex || 0;
+    vn.elm.__i18n_parent = vn.data.$i18n_parent || null;
   },
   insert: function (vn) {
     __mountPage(vn.elm);
@@ -874,6 +925,9 @@ function __mountComponent(el) {
   var renderFn = makeRenderFn(el, tplFn);
   el.__scope = createRenderScope(el, null, renderFn, null, initial);
   renderFn(el.__scope);
+  var parentScope = __findScopeProxy(el.parentElement);
+  var parentI18n = parentScope ? parentScope.$_target.$i18n : window.pug_i18n;
+  __setupI18n(el.__scope, parentI18n);
   initScopedForms(el);
 }
 

@@ -1,11 +1,12 @@
 pug-page(rest="/$$dev/api/echo")
   :init
-    showSlot = false
     count = 0
+    name = "Tom"
 
   h1 Render Test
   .rest-status Rest result: #{result}
 
+  h2 Reactive Demo
   p
     div: a.inc(onclick="count=count+1") Inc
     .counter Count: #{count}
@@ -17,3 +18,34 @@ pug-page(rest="/$$dev/api/echo")
     if showSlot
       render-box(title="Slot Test")
         p.slot-value Slot active
+
+  #i18n
+    h2#i18n I18N Demo
+    p local i18n: #{$T.Hello}
+    p parent i18n:
+      span= $T["Hello #{name}"]
+    p In form & attr:
+      input#i18n-username(name="name" placeholder=$T.Username)
+      p From global $i18n:
+        button#i18n-submit= $T.OK
+        button#i18n-cancel= $T.Cancel
+
+    p
+      a.lang-en(href="#" onclick="$user.lang='en'") EN
+      |  
+      a.lang-zh(href="#" onclick="$user.lang='zh'") ZH
+      |  
+      a.lang-jp(href="#" onclick="$user.lang='jp'") JP
+      |  
+      a.lang-zh-tw(href="#" onclick="$user.lang='zh_TW'") ZH-TW
+
+  :i18n
+    Hello:
+      zh: 你好
+      jp: こんにちは
+    "Hello #{name}":
+      zh: "#{name}, 你好"
+      jp: "こんにちは #{name}"
+    Submit:
+      zh: 提交
+      jp: 送信

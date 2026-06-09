@@ -238,6 +238,72 @@ Anti Page Reloading: the server should return `/index.html` for 404 responses to
 
 ---
 
+## Internationalization (i18n)
+
+### `$T` Expression
+
+Translates text content based on `$user.lang`. Expression-only syntax via scope Proxy:
+
+```pug
+p= $T.Hello
+p= $T["Hello #{name}"]
+input(placeholder=$T.Username)
+button= $T.Submit
+```
+
+`$T` is a scope-level Proxy — property access returns translated strings, assignment is blocked by the `$`-prefix convention. All forms resolve from the same translation table. All track `$user.lang` as a dependency — changing the language triggers re-render of all translated text.
+
+### `:i18n` Block
+
+Per-page translation definitions in YAML format. Follows the `:init` / `:css` / `:sass` filter block convention.
+
+```pug
+:i18n
+  Hello:
+    zh: 你好
+    jp: こんにちは
+  Hello #{name}:
+    zh: 你好 #{name}
+  Submit:
+    zh: 提交
+```
+
+Translation keys support `#{...}` interpolation. The key pattern must match exactly between `T` usage and `:i18n` definition. Interpolated variables are resolved at render time from the current scope.
+
+### Global `i18n.yaml`
+
+A `i18n.yaml` file in the project root (`<root>/i18n.yaml`) provides shared translations auto-loaded into all scopes:
+
+```yaml
+OK:
+  zh: 确定
+Cancel:
+  zh: 取消
+Username:
+  zh: 用户名
+```
+
+### Resolution Order
+
+Translations cascade via prototype chain: `component $i18n` → `page $i18n` → `layout $i18n` → `window.pug_i18n`. Child scope entries override parent entries for the same key.
+
+Per-language lookup (within each `map[key]` entry):
+
+1. `map[key][lang]` — exact match (e.g. `zh_HK`)
+2. `map[key][base]` — base language (e.g. `zh` from `zh_HK`)
+3. `map[key][$user.lang_default]` — configured default language (defaults to `en`, settable in `i18n.yaml` or via REST)
+4. Key text — fallback
+
+### `$user.lang_default`
+
+Default fallback language. Three levels:
+
+1. Hardcoded default: `en`
+2. `i18n.yaml` override: `lang_default: zh_CN`
+3. REST response can set `$user.lang_default` at runtime
+
+---
+
 ## Scoped CSS
 
 By default, `style.`, `:scss`, and `:sass` blocks are scoped to their parent template. To emit global CSS:

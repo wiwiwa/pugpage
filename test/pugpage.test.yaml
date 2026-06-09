@@ -17,6 +17,18 @@ render:
     no: render-box
     has:
       .counter: "Count: 1"
+  i18n:
+    default language:
+    - has:
+        "#i18n": Hello Tom
+    switch to zh:
+    - click: a.lang-zh
+      has:
+        "#i18n": Tom, 你好
+    switch to zh_TW:
+    - click: a.lang-zh-tw
+      has:
+        "#i18n": 確定
 login:
   redirect if not login:
   - goto: /

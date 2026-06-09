@@ -7,6 +7,7 @@
 
 import type { PugASTNode } from "./types.ts";
 import { scopeCss, hashString } from "./css-scope.ts";
+import { parse as parseYaml } from "@std/yaml/parse";
 import * as sass from "sass";
 
 let __urlPath = "";
@@ -128,6 +129,28 @@ function makeStyleExpr(css: string, scoped: boolean): string {
   return `window.$h("style", { key: "${styleId}", attrs: { "data-pugpage-style": "${styleId}" } }, ${JSON.stringify(input)})`;
 }
 
+function compileI18nBlock(node: PugASTNode): string {
+  const yaml = extractTextBlock(node);
+  if (!yaml.trim()) return "";
+  try {
+    const parsed = parseYaml(yaml) as Record<string, unknown>;
+    if (!parsed || typeof parsed !== "object") return "";
+    const entries: string[] = [];
+    for (const [key, langs] of Object.entries(parsed)) {
+      if (typeof langs !== "object" || langs === null) continue;
+      const langEntries: string[] = [];
+      for (const [lang, text] of Object.entries(langs as Record<string, string>)) {
+        langEntries.push(`${JSON.stringify(lang)}: ${JSON.stringify(text)}`);
+      }
+      entries.push(`${JSON.stringify(key)}: { ${langEntries.join(", ")} }`);
+    }
+    return entries.length > 0 ? `$i18n = { ${entries.join(", ")} }` : "";
+  } catch (e) {
+    console.warn("PugPage: failed to parse :i18n block:", (e as Error).message);
+    return "";
+  }
+}
+
 function generateBlock(node: PugASTNode): BlockResult {
   const exprs: string[] = [];
   const stmts: string[] = [];
@@ -245,6 +268,9 @@ function generateBlock(node: PugASTNode): BlockResult {
         } else if (child.name === "scss" || child.name === "sass") {
           const css = compileStyleFilter(child);
           if (css) exprs.push(makeStyleExpr(css, isScopedStyle(child)));
+        } else if (child.name === "i18n") {
+          const i18nCode = compileI18nBlock(child);
+          if (i18nCode) initStmts.push(i18nCode);
         }
         break;
       }

@@ -348,6 +348,25 @@ Key source entry points:
 - `propagateTitleChange(scope)`
 - `documentTitle(titles)`
 
+### Internationalization (i18n)
+
+Key source entry points:
+- `generateBlock()` (`:i18n` filter compilation)
+- `compileI18nBlock(node)` — parses `:i18n` YAML into translation map
+- `window.$T(key, scopeI18n, scope)` function — reads `$user.lang`, resolves from scope `$i18n` prototype chain → key text fallback, interpolates `#{expr}` using scope
+- `T` scope proxy — returns translated strings on property access, throws on assignment, tracks `$user` dependency automatically
+- `pug_i18n` global registry — loaded from `<root>/i18n.yaml` at build time
+
+Rules:
+- `$T.key` and `$T["key #{var}"]` are normal scope property access; the `$T` proxy handles translation at runtime
+- `$T` proxy reads `scope.$user` on every access, which triggers `$deps.add("$user")` through the scope proxy; no compiler-emitted dependency tracking needed
+- `:i18n` filter block is parsed at compile time into a scope-level translation map (all languages)
+- `i18n.yaml` at project root is compiled into a global `pug_i18n` registry
+- interpolation: `$T["Hello #{name}"]` passes `"Hello #{name}"` as key to proxy; `$T()` finds translation then replaces `#{name}` with `scope["name"]`
+- `$i18n` uses prototype chain for cascading: `component → page → layout → pug_i18n`
+- `renderSlot()` passes `$i18n_parent` via VNode data; `create` hook stores on element; scope creation uses `Object.create($i18n_parent)`
+- per-language resolution: exact tag (`zh_HK`) → base tag (`zh`) → `$user.lang_default` (defaults to `en`) → key text
+
 ## Implementation Map
 
 Compiler ownership:
@@ -357,6 +376,7 @@ Compiler ownership:
 - layout field resolution
 - Pug AST codegen
 - scoped CSS codegen
+- `:i18n` block parsing and `T` expression compilation
 
 Runtime ownership:
 - `src/render/render.js`
@@ -368,6 +388,7 @@ Runtime ownership:
 - scoped forms
 - components
 - title propagation
+- `$T` scope proxy, `window.$T()` translation lookup, and `pug_i18n` global registry
 
 Release artifact ownership:
 - `release/render.min.js` is updated only for runtime release builds.
