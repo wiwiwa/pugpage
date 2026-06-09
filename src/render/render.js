@@ -121,7 +121,7 @@ var __RUNTIME_FIELDS = {
   $vnode: 1, $titles: 1, $title: 1, $definingInputs: 1, $_target: 1
 };
 
-var SCOPE_GLOBALS = ["Math", "console", "Date", "JSON", "Array", "Object", "String", "Number", "Boolean", "Error", "parseInt", "parseFloat", "isNaN", "isFinite", "undefined", "NaN", "Infinity", "encodeURIComponent", "decodeURIComponent", "Promise", "Symbol", "Map", "Set", "RegExp"];
+var SCOPE_GLOBALS = ["Math", "console", "Date", "JSON", "Array", "Object", "String", "Number", "Boolean", "Error", "parseInt", "parseFloat", "isNaN", "isFinite", "undefined", "NaN", "Infinity", "encodeURIComponent", "decodeURIComponent", "Promise", "Symbol", "Map", "Set", "RegExp", "document", "fetch", "URL", "setTimeout", "clearTimeout", "setInterval", "clearInterval", "requestAnimationFrame", "cancelAnimationFrame"];
 
 function createRenderScope(element, templateKey, renderFn, initFn, initial) {
   var target = Object.create(null);
