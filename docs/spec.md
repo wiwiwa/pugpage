@@ -321,12 +321,26 @@ Third-party web components work in Pug templates. Unknown tags pass through to t
 
 ---
 
+## CLI Reference
+
+```
+pugpage dev [--root=.] [--port=8000] [--api=URL] [--static=DIR]
+                                       Start dev server with live reload and API proxy
+pugpage dist [--root=.] [--out=DIR]
+                                       Build for production
+pugpage test [--root=.] [--api=URL] [--static=DIR] [test_files...]
+                                       Run declarative browser tests (auto-discovers *.test.yaml if omitted)
+pugpage init [dir]                    Scaffold a new PugPage project
+```
+
+---
+
 ## Testing
 
-Write a `*.test.yaml` file and run:
+Write test files matching `*.test.yaml` and run:
 
 ```sh
-pugpage test ./pugpage.test.yaml
+deno task test
 ```
 
 Exits `0` when all tests pass, `1` on any failure.

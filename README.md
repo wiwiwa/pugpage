@@ -82,35 +82,17 @@ See [docs/spec.md](docs/spec.md) for full specification.
 # Usage
 
 1. Install [Deno](https://docs.deno.com/runtime/getting_started/installation/)
-2. Install: `curl -sL https://raw.githubusercontent.com/wiwiwa/pugpage/master/pugpage.sh | sh`
-3. Start the dev server: `./pugpage dev`
-   - The dev server watches `.pug` files for changes and reloads the browser automatically.
-   - Creates `index.html` in the project root if it doesn't exist.
-4. Build for production: `./pugpage dist`
-5. Update to latest: `./pugpage update`
+2. Initialize or update project: `deno x jsr:@wiwiwa/pugpage init WEB-DIR`. This will update:
+  * `./deno.json`
+  * `index.html`, basic `index.pug`, and a test file, in WEB-DIR
+3. Start the dev server: `deno task dev`
+4. Build for production: `deno task dist`
 
-## CLI Reference
-
-```
-pugpage dev [--root=.] [--port=8000] [--api=URL] [--static=DIR]
-                                       Start dev server with live reload and API proxy
-pugpage dist [--root=.] [--out=DIR]
-                                       Build for production
-pugpage test [--root=.] [--api=URL] [--static=DIR] <test.yaml>
-                                       Run declarative browser tests in headless mode
-pugpage install                       Install pugpage to ./pugpage
-pugpage update                        Update pugpage to latest version
-```
 
 ## Testing
 
-Write a `*.test.yaml` file and run:
+Write test files matching `*.test.yaml` and run: `deno task test`
 
-```sh
-pugpage test ./pugpage.test.yaml
-```
-
-Exits `0` when all tests pass, `1` on any failure.
 
 Example (see `test/pugpage.test.yaml` for a full example):
 

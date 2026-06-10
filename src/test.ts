@@ -209,15 +209,13 @@ async function runTestCase(page: Page, baseUrl: string, testCase: TestCase): Pro
 
 export interface RunTestsOptions {
   root: string;
-  testFile: string;
+  testFiles: string[];
   proxyTarget?: string;
   staticDir?: string;
   verbose?: boolean;
 }
 
 export async function runTests(opts: RunTestsOptions): Promise<boolean> {
-  const parsed = parse(await Deno.readTextFile(opts.testFile));
-  const testCases = flattenTestTree(parsed);
 
   const server = await startDevServer({
     root: opts.root,
@@ -259,19 +257,26 @@ export async function runTests(opts: RunTestsOptions): Promise<boolean> {
 
   let allPassed = true;
 
-  for (const testCase of testCases) {
-    Deno.stdout.write(new TextEncoder().encode(`  ${testCase.name} ... `));
+  for (const testFile of opts.testFiles) {
+    console.log(`\nRunning tests in ${testFile.split('/').pop()}...`);
+    const parsed = parse(await Deno.readTextFile(testFile));
+    const testCases = flattenTestTree(parsed);
 
-    const failure = await runTestCase(page, baseUrl, testCase);
+    for (const testCase of testCases) {
+      Deno.stdout.write(new TextEncoder().encode(`  ${testCase.name} ... `));
 
-    if (failure) {
-      console.log("\x1b[31mFAILED\x1b[0m");
-      console.log(`    ${opts.testFile}: ${failure}`);
-      allPassed = false;
-      break;
-    } else {
-      console.log("\x1b[32mok\x1b[0m");
+      const failure = await runTestCase(page, baseUrl, testCase);
+
+      if (failure) {
+        console.log("\x1b[31mFAILED\x1b[0m");
+        console.log(`    ${testFile}: ${failure}`);
+        allPassed = false;
+        break;
+      } else {
+        console.log("\x1b[32mok\x1b[0m");
+      }
     }
+    if (!allPassed) break;
   }
 
   await browser.close();

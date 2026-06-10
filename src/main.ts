@@ -6,7 +6,7 @@ import { parseArgs } from "@std/cli";
 import { startDevServer } from "./dev.ts";
 import { buildDist } from "./dist.ts";
 import { runTests } from "./test.ts";
-import { installOrUpdate } from "./setup.ts";
+import { initProject } from "./setup.ts";
 
 function printHelp() {
   console.log(`PugPage CLI
@@ -14,13 +14,13 @@ Usage:
   pugpage dev [--root=.] [--port=8000] [--api=URL] [--static=DIR]
   pugpage dist [--root=.] [--out=DIR]
   pugpage test [--root=.] [--api=URL] [--static=DIR] [-v|--verbose] <test.yaml> 
+  pugpage init [dir]
 
 Commands:
   dev      Start development server with live reload
   dist     Build application for production
   test     Run declarative browser tests in headless mode
-  install  Install pugpage to ./pugpage
-  update   Update pugpage to latest version
+  init     Scaffold a new PugPage project in the specified directory
 
 Options:
   --root    Project root directory (default: .)
@@ -60,24 +60,41 @@ if (import.meta.main) {
       });
       break;
     case "test": {
-      const testFile = args._[1];
-      if (!testFile) {
-        console.error("Usage: pugpage test <test.yaml>");
+      const testGlobs = args._.slice(1).map(String);
+      if (testGlobs.length === 0) {
+        testGlobs.push("*.test.yaml");
+      }
+      
+      const { expandGlob } = await import("@std/fs");
+      const { resolve } = await import("@std/path");
+      const searchRoot = resolve(args.root);
+      const testFiles: string[] = [];
+      for (const pattern of testGlobs) {
+        // Use synchronous array building for simplicity
+        for await (const file of expandGlob(pattern, { root: searchRoot })) {
+          if (file.isFile) testFiles.push(file.path);
+        }
+      }
+
+      if (testFiles.length === 0) {
+        console.error("No test files found matching: " + testGlobs.join(", "));
         Deno.exit(1);
       }
+
       const passed = await runTests({
         root: args.root,
-        testFile: String(testFile),
+        testFiles,
         proxyTarget: args.api,
         staticDir: args.static,
         verbose: args.verbose || args.v,
       });
       Deno.exit(passed ? 0 : 1);
     }
-    case "install":
-    case "update":
-      await installOrUpdate(args._[0] as "install" | "update");
+    case "init": {
+      const targetDir = args._[1] ? String(args._[1]) : ".";
+      await initProject(targetDir);
       break;
+    }
     default:
       printHelp();
       Deno.exit(1);

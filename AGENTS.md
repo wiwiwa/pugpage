@@ -88,11 +88,11 @@ Pull requests should include a short description, the commands run, and any rele
 
 Use the `release` skill when releasing. Key constraints:
 - Tag convention: plain semver, no `v` prefix (`1.9.8` not `v1.9.8`)
-- ONE atomic commit per release — amend the fix commit with version bump
+- ONE atomic commit per release — amend the last commit with version bump, render.min.js, and doc updates
 - Do not regenerate `release/render.min.js` for compiler-only changes
 
 **Build**: `deno bundle --minify -o ./release/render.min.js ./src/render/render.js`
-**Version files**: `deno.json` (`version`), `pugpage.sh` (`VERSION`)
+**Version files**: `deno.json` (`version`)
 **Verify**: `deno test --allow-all --no-check` and `deno publish --dry-run`
-**Amend files**: `deno.json deno.lock pugpage.sh release/render.min.js`
+**Amend files**: `deno.json deno.lock release/render.min.js`
 **Publish**: `.github/workflows/publish-jsr.yml` publishes to JSR from tag via GitHub OIDC

@@ -1,54 +1,111 @@
-const REPO = "wiwiwa/pugpage";
+import { join, basename, resolve } from "@std/path";
+import { exists, ensureDir } from "@std/fs";
 
-function getWrapperPath(command: string): string {
-  if (command === "update") {
-    const self = Deno.env.get("PUGPAGE_SELF");
-    if (self) return self;
-  }
-  return "./pugpage";
-}
+export async function initProject(targetDir: string) {
+  const projectRoot = Deno.cwd();
+  const absTargetDir = resolve(targetDir);
+  const projectName = basename(projectRoot) || "pugpage-app";
 
-async function getLatestVersion(): Promise<string> {
-  const resp = await fetch(`https://api.github.com/repos/${REPO}/tags`);
-  if (!resp.ok) throw new Error(`Failed to fetch latest version: ${resp.status}`);
-  const tags: Array<{ name: string }> = await resp.json();
-  if (!tags.length) throw new Error("No tags found in repository");
-  return tags[0].name;
-}
+  const isRoot = absTargetDir === projectRoot;
+  const rootFlag = isRoot ? "" : ` --root ${targetDir}`;
 
-export async function installOrUpdate(command: "install" | "update") {
-  const latest = await getLatestVersion();
-  const wrapperPath = getWrapperPath(command);
+  const relDenoJson = "deno.json";
+  const relIndex = join(targetDir, "index.pug");
+  const relLayout = join(targetDir, "layout.pug");
+  const relTest = join(targetDir, `${projectName}.test.yaml`);
 
-  if (command === "update") {
-    const content = await Deno.readTextFile(wrapperPath);
-    const match = content.match(/VERSION="([^"]+)"/);
-    const current = match ? match[1] : null;
-    if (current === latest) {
-      console.log(`Already up to date (v${current})`);
-      return;
-    }
-    if (current) {
-      console.log(`Current: v${current} → Latest: v${latest}`);
-    }
-  }
+  console.log(`
+Initializing PugPage project...
+Planned actions:
+  - Ensure directory exists: ${targetDir}
+  - Generate/update tasks: ${relDenoJson}
+  - Generate (if missing): ${relIndex}
+  - Generate (if missing): ${relLayout}
+  - Generate (if missing): ${relTest}
+`);
 
   if (Deno.stdin.isTerminal()) {
-    const confirmed = confirm(`Install pugpage v${latest} to ${wrapperPath}?`);
-    if (!confirmed) {
+    if (!confirm("Proceed? ")) {
       console.log("Cancelled.");
       return;
     }
-  } else {
-    console.log(`Installing pugpage v${latest} to ${wrapperPath}...`);
   }
 
-  const url = `https://raw.githubusercontent.com/${REPO}/${latest}/pugpage.sh`;
-  const resp = await fetch(url);
-  if (!resp.ok) throw new Error(`Failed to download: ${resp.status}`);
-  const content = await resp.text();
+  await ensureDir(absTargetDir);
 
-  await Deno.writeTextFile(wrapperPath, content);
-  await Deno.chmod(wrapperPath, 0o755);
-  console.log(`Installed pugpage v${latest} to ${wrapperPath}`);
+  // 1. deno.json (Always in project root)
+  const denoJsonPath = join(projectRoot, "deno.json");
+  let denoJson: any = {};
+  let denoJsonStr = "";
+  if (await exists(denoJsonPath)) {
+    try {
+      denoJsonStr = await Deno.readTextFile(denoJsonPath);
+      denoJson = JSON.parse(denoJsonStr);
+    } catch (e) {
+      console.error(`
+[Error] Failed to parse existing deno.json. It might contain comments (JSONC), which this script cannot currently merge automatically.
+Please manually add these tasks to your deno.json:
+
+  "dev": "deno x jsr:@wiwiwa/pugpage dev${rootFlag}"
+  "dist": "deno x jsr:@wiwiwa/pugpage dist${rootFlag}"
+  "test": "deno x jsr:@wiwiwa/pugpage test${rootFlag} *.test.yaml"
+`);
+      return;
+    }
+  }
+  
+  denoJson.tasks = denoJson.tasks || {};
+  let updatedDenoJson = false;
+  
+  if (!denoJson.tasks.dev) {
+    denoJson.tasks.dev = `deno x jsr:@wiwiwa/pugpage dev${rootFlag}`;
+    updatedDenoJson = true;
+  }
+  if (!denoJson.tasks.dist) {
+    denoJson.tasks.dist = `deno x jsr:@wiwiwa/pugpage dist${rootFlag}`;
+    updatedDenoJson = true;
+  }
+  if (!denoJson.tasks.test) {
+    denoJson.tasks.test = `deno x jsr:@wiwiwa/pugpage test${rootFlag}`;
+    updatedDenoJson = true;
+  }
+
+  if (updatedDenoJson) {
+    await Deno.writeTextFile(denoJsonPath, JSON.stringify(denoJson, null, 2) + "\n");
+    console.log("  [+] Updated deno.json with PugPage tasks.");
+  } else {
+    console.log("  [-] deno.json already has PugPage tasks. Skipped.");
+  }
+
+  // 2. index.pug
+  const indexPugPath = join(absTargetDir, "index.pug");
+  if (!(await exists(indexPugPath))) {
+    const indexContent = `h1 Welcome to PugPage\np This project was scaffolded securely with deno x.\n`;
+    await Deno.writeTextFile(indexPugPath, indexContent);
+    console.log("  [+] Created index.pug");
+  } else {
+    console.log("  [-] index.pug already exists. Skipped.");
+  }
+
+  // 3. layout.pug
+  const layoutPugPath = join(absTargetDir, "layout.pug");
+  if (!(await exists(layoutPugPath))) {
+    const layoutContent = `doctype html\nhtml\n  head\n    meta(charset="utf-8")\n    meta(name="viewport" content="width=device-width, initial-scale=1")\n    title PugPage App\n    style.\n      body { font-family: system-ui, sans-serif; padding: 2rem; }\n  body\n    slot\n`;
+    await Deno.writeTextFile(layoutPugPath, layoutContent);
+    console.log("  [+] Created layout.pug");
+  } else {
+    console.log("  [-] layout.pug already exists. Skipped.");
+  }
+
+  // 4. Test file
+  const testFilePath = join(absTargetDir, `${projectName}.test.yaml`);
+  if (!(await exists(testFilePath))) {
+    const testContent = `index:\n  render successfully:\n    - goto: /\n      has:\n        h1: Welcome to PugPage\n`;
+    await Deno.writeTextFile(testFilePath, testContent);
+    console.log(`  [+] Created ${projectName}.test.yaml`);
+  } else {
+    console.log(`  [-] ${projectName}.test.yaml already exists. Skipped.`);
+  }
+
+  console.log(`\nDone! Run \`deno task dev\` to start your server.\n`);
 }
