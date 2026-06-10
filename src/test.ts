@@ -212,6 +212,7 @@ export interface RunTestsOptions {
   testFile: string;
   proxyTarget?: string;
   staticDir?: string;
+  verbose?: boolean;
 }
 
 export async function runTests(opts: RunTestsOptions): Promise<boolean> {
@@ -231,6 +232,23 @@ export async function runTests(opts: RunTestsOptions): Promise<boolean> {
 
   const browser: Browser = await chromium.launch({ args: ["--no-sandbox"] });
   const page = await browser.newPage();
+
+  if (opts.verbose) {
+    page.on("console", (msg) => {
+      const type = msg.type();
+      if (type === "log") {
+        console.log(`\n[BROWSER CONSOLE LOG] ${msg.text()}`);
+      } else if (type === "warning") {
+        console.log(`\n[BROWSER CONSOLE WARN] ${msg.text()}`);
+      } else if (type === "error") {
+        console.log(`\n[BROWSER CONSOLE ERROR] ${msg.text()}`);
+      }
+    });
+
+    page.on("pageerror", (err) => {
+      console.log(`\n[BROWSER CONSOLE ERROR] ${err.message}`);
+    });
+  }
 
   // Clear stored auth state
   await page.goto(baseUrl);

@@ -13,7 +13,7 @@ function printHelp() {
 Usage:
   pugpage dev [--root=.] [--port=8000] [--api=URL] [--static=DIR]
   pugpage dist [--root=.] [--out=DIR]
-  pugpage test [--root=.] [--api=URL] [--static=DIR] <test.yaml> 
+  pugpage test [--root=.] [--api=URL] [--static=DIR] [-v|--verbose] <test.yaml> 
 
 Commands:
   dev      Start development server with live reload
@@ -28,15 +28,19 @@ Options:
   --api     Backend API URL to proxy (default: http://localhost:8080)
   --static  Additional directory to serve static files from
   --out     Output directory for dist build (default: $root/dist)
+  -v, --verbose  Show browser console output during tests
 `);
 }
 
 if (import.meta.main) {
   const args = parseArgs(Deno.args,{
     string: ["root", "out", "api", "static", "test"],
+    boolean: ["verbose", "v"],
     default: {
       root: ".",
       port: 8000,
+      verbose: false,
+      v: false,
     },
   });
   switch (args._[0]) {
@@ -66,6 +70,7 @@ if (import.meta.main) {
         testFile: String(testFile),
         proxyTarget: args.api,
         staticDir: args.static,
+        verbose: args.verbose || args.v,
       });
       Deno.exit(passed ? 0 : 1);
     }

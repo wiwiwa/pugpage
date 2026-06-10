@@ -7,7 +7,7 @@ PugPage is a Deno-based CLI and browser runtime for serving and bundling Pug pag
 ## Build, Test, and Development Commands
 
 - `deno test --allow-all`: runs the full test suite, including Playwright browser checks.
-- `deno run --allow-all ./src/main.ts test --root ./test/pages test/pugpage.test.yaml`: runs declarative YAML tests via Playwright.
+- `deno run --allow-all ./src/main.ts test --root ./test/pages -v test/pugpage.test.yaml`: runs declarative YAML tests via Playwright with browser console output.
 - `deno task dev`: starts the dev server against fixture pages on port 8081.
 - `deno run --allow-all ./src/main.ts dev --root ./test/pages`: starts the dev server against fixture pages (default port).
 - `deno run --allow-all ./src/main.ts dist --root ./test/pages --out ./test/pages/dist`: builds a production bundle for a sample project.
