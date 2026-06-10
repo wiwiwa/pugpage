@@ -25,10 +25,15 @@ render:
     - click: a.lang-zh
       has:
         "#i18n": Tom, 你好
+    - fill:
+        "#i18n input": XXXX
+      has:
+        "#value": XXXX
     switch to zh_TW:
     - click: a.lang-zh-tw
       has:
         "#i18n": 確定
+        "#value": 当前值
 login:
   redirect if not login:
   - goto: /

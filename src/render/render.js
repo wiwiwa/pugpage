@@ -522,6 +522,11 @@ function initFormScope(form) {
   var definingInputs = { $formBodyId: formBodyId, rest: rest || null };
 
   if (form.__scope && !shouldCreateScope(form.__scope, definingInputs)) {
+    var parentScope = __findScopeProxy(form.parentElement);
+    var parentI18n = parentScope ? parentScope.$_target.$i18n : window.pug_i18n;
+    __setupI18n(form.__scope, parentI18n);
+    form.__scope.$_target.$dirty = false;
+    renderFn(form.__scope);
     return;
   }
   if (form.__scope) scopeDisposal(form.__scope);

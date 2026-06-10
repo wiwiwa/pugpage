@@ -20,12 +20,16 @@ pug-page(rest="/$$dev/api/echo")
         p.slot-value Slot active
 
   #i18n
-    h2#i18n I18N Demo
-    p local i18n: #{$T.Hello}
-    p parent i18n:
+    h2 I18N Demo
+    p Local i18n: #{$T.Hello}
+    p Parent i18n:
       span= $T["Hello #{name}"]
     p In form & attr:
-      input#i18n-username(name="name" placeholder=$T.Username)
+    form(rest="/$$dev/api/echo")
+      p type something:
+        input#i18n-username(name="value" placeholder=$T.Username)
+      p parent i18n:
+        span#value= $T["Current value: #{value}"]
       p From global $i18n:
         button#i18n-submit= $T.OK
         button#i18n-cancel= $T.Cancel
@@ -35,17 +39,15 @@ pug-page(rest="/$$dev/api/echo")
       |  
       a.lang-zh(href="#" onclick="$user.lang='zh'") ZH
       |  
-      a.lang-jp(href="#" onclick="$user.lang='jp'") JP
-      |  
       a.lang-zh-tw(href="#" onclick="$user.lang='zh_TW'") ZH-TW
 
   :i18n
+    "Current value: #{value}":
+      zh: "当前值: #{value}"
     Hello:
       zh: 你好
-      jp: こんにちは
     "Hello #{name}":
       zh: "#{name}, 你好"
-      jp: "こんにちは #{name}"
     Submit:
       zh: 提交
       jp: 送信

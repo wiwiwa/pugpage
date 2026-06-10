@@ -13,11 +13,13 @@ import * as sass from "sass";
 let __urlPath = "";
 let __styleIndex = 0;
 let __hasScopedStyles = false;
+let __inScopedForm = false;
 
 export function generateCode(ast: PugASTNode, urlPath: string): { code: string; initCode: string; hasScopedStyles: boolean } {
   __urlPath = urlPath;
   __styleIndex = 0;
   __hasScopedStyles = false;
+  __inScopedForm = false;
   const { exprs, stmts, initStmts } = generateBlock(ast);
 
   const preamble = stmts.length > 0 ? stmts.join(";\n") + ";\n" : "";
@@ -351,12 +353,33 @@ function generateTag(node: PugASTNode): string {
     attrEntries.unshift(`href: "#"`);
   }
 
+  if (__inScopedForm && (node.name === "input" || node.name === "select" || node.name === "textarea")) {
+    const nameAttr = node.attrs?.find((a) => (a as { name: string }).name === "name");
+    if (nameAttr && !eventEntries.some((e) => e.startsWith("input:"))) {
+      const fieldName = isStaticString(nameAttr.val) ? extractString(nameAttr.val) : null;
+      if (fieldName) {
+        const valExpr = node.name === "select" ? "$event.target.value"
+          : `($event.target.type === "checkbox") ? $event.target.checked : $event.target.value`;
+        eventEntries.push(`input: function($event){var __elm=this.elm||this;var __s=window.__findScopeProxy(__elm);try{if(__s){__s["${fieldName}"]=${valExpr};window.__rerenderOnEvent(__elm)}}catch(e){console.error("PugPage input binding error:",e)}}`);
+      }
+    }
+  }
+
   const dataParts: string[] = [];
   if (attrEntries.length > 0) dataParts.push(`attrs: { ${attrEntries.join(", ")} }`);
   if (dynamicClassEntries.length > 0) dataParts.push(`class: { ${dynamicClassEntries.join(", ")} }`);
   if (eventEntries.length > 0) dataParts.push(`on: { ${eventEntries.join(", ")} }`);
 
+  const hasRest = node.attrs?.some((a) => (a as { name: string }).name === "rest");
+  const hasAction = node.attrs?.some((a) => (a as { name: string }).name === "action");
+  const hasHref = node.attrs?.some((a) => (a as { name: string }).name === "href");
+  const needsTpl = (node.name === "pug-page" && hasRest) ||
+    (node.name === "form" && (hasRest || (hasAction && hasHref)));
+
+  const prevScopedForm = __inScopedForm;
+  if (needsTpl) __inScopedForm = true;
   const blockResult = node.block ? generateBlock(node.block) : { exprs: [] as string[], stmts: [] as string[], initStmts: [] as string[] };
+  __inScopedForm = prevScopedForm;
 
   let childrenExpr = "";
   if (blockResult.exprs.length === 1 && blockResult.stmts.length === 0) {
@@ -371,11 +394,6 @@ function generateTag(node: PugASTNode): string {
     childrenExpr = `(function(__d) { with(window.__handlerScope(__d)) { ${innerStmts} ${innerRet} } })(data)`;
   }
 
-  const hasRest = node.attrs?.some((a) => (a as { name: string }).name === "rest");
-  const hasAction = node.attrs?.some((a) => (a as { name: string }).name === "action");
-  const hasHref = node.attrs?.some((a) => (a as { name: string }).name === "href");
-  const needsTpl = (node.name === "pug-page" && hasRest) ||
-    (node.name === "form" && (hasRest || (hasAction && hasHref)));
   if (needsTpl && childrenExpr) {
     const hasOwnScope = blockResult.stmts.length > 0;
     const stableId = `${__urlPath}:form:${node.line}`;
