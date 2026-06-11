@@ -87,13 +87,14 @@ Pull requests should include a short description, the commands run, and any rele
 ## Release Procedure
 
 Use the `release` skill when releasing. Key constraints:
+- Working tree must be clean before releasing — all changes must already be committed
+- Do NOT create new commits during release — only amend the existing commit if needed
 - Tag convention: plain semver, no `v` prefix (`1.9.8` not `v1.9.8`)
 - Regenerate `release/render.min.js`, only if `render.js` changed
-  - ONE atomic commit per release — amend the last commit with render.min.js updates
+  - Amend the last commit with render.min.js: `git add release/render.min.js && git commit --amend --no-edit`
 - `deno.json` version is auto-set from the git tag by the publish workflow — no manual bump needed
 
 **Build**: `deno bundle --minify -o ./release/render.min.js ./src/render/render.js`
 **Verify**: `deno test --allow-all --no-check`
-**Amend files**: `release/render.min.js` (and any doc updates)
 **Tag + Push**: `git tag X.Y.Z && git push origin master && git push origin X.Y.Z`
 **Publish**: `.github/workflows/publish-jsr.yml` auto-sets version from tag and publishes to JSR via GitHub OIDC

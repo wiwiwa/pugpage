@@ -76,7 +76,7 @@ function __clearAuthStorage() {
 }
 
 // === User State ===
-window.$user = {
+window.$user = new Proxy({
   name: "",
   roles: [],
   lang: null,
@@ -99,7 +99,14 @@ window.$user = {
     __clearAuthStorage();
     window.navigateTo(url);
   }
-};
+}, {
+  set(t, prop, value) {
+    t[prop] = value;
+    if (prop !== "lang" && prop !== "lang_default") return true;
+    updatePage();
+    return true;
+  }
+});
 if (window.__lang_default) window.$user.lang_default = window.__lang_default;
 
 // === i18n ===
@@ -142,18 +149,20 @@ var __RUNTIME_FIELDS = {
 var SCOPE_GLOBALS = ["Math", "console", "Date", "JSON", "Array", "Object", "String", "Number", "Boolean", "Error", "parseInt", "parseFloat", "isNaN", "isFinite", "undefined", "NaN", "Infinity", "encodeURIComponent", "decodeURIComponent", "Promise", "Symbol", "Map", "Set", "RegExp", "document", "fetch", "URL", "setTimeout", "clearTimeout", "setInterval", "clearInterval", "requestAnimationFrame", "cancelAnimationFrame"];
 
 function createRenderScope(element, templateKey, renderFn, initFn, initial) {
-  var target = Object.create(null);
-  if (initial) Object.assign(target, initial);
-  target.$element = element;
-  target.$renderFn = renderFn;
-  target.$templateKey = templateKey;
-  target.$dirty = false;
-  target.$scheduled = false;
-  target.$deps = new Set();
-  target.$parentScope = __findScopeProxy(element.parentElement);
-  target.$vnode = null;
-  target.$titles = [];
-  target.$title = null;
+  var target = Object.assign(Object.create(null), {
+    $element: element,
+    $renderFn: renderFn,
+    $templateKey: templateKey,
+    $dirty: false,
+    $scheduled: false,
+    $deps: new Set(),
+    $childScopes: [],
+    $parentScope: __findScopeProxy(element.parentElement) || window.pug_router,
+    $vnode: null,
+    $titles: [],
+    $title: null,
+    $_target: null,
+  }, initial);
   target.$_target = target;
 
   var __tHolder = { __s: null };
@@ -203,6 +212,8 @@ function createRenderScope(element, templateKey, renderFn, initFn, initial) {
   });
 
   __tHolder.__s = scope;
+
+  target.$parentScope.$_target.$childScopes.push(scope);
 
   if (initFn) {
     var initProxy = new Proxy(target, {
@@ -280,6 +291,11 @@ function scopeDisposal(scope) {
     t.$title = null;
     propagateTitleChange(scope);
   }
+  var parent = t.$parentScope;
+  var siblings = parent.$_target.$childScopes;
+  var idx = siblings.indexOf(scope);
+  if (idx !== -1) siblings.splice(idx, 1);
+  t.$childScopes = [];
   t.$dirty = false;
   t.$scheduled = false;
   t.$vnode = null;
@@ -417,8 +433,8 @@ function makeRenderFn(element, tplFn) {
     vnode = patchVdomInto(element, vnode);
     scope.$_target.$vnode = vnode;
     initScopedForms(element);
-    if (__router && element !== __router) {
-      var rootPage = __router.querySelector("pug-page");
+    if (window.pug_router && element !== window.pug_router) {
+      var rootPage = window.pug_router.querySelector("pug-page");
       if (rootPage && rootPage.__scope) {
         var _rt = rootPage.__scope.$_target;
         var _rc = [];
@@ -655,7 +671,7 @@ function __setupI18n(scope, parentI18n) {
 
 // === pug-router ===
 
-var __router = null;
+window.pug_router = null;
 
 // === pug-page Mount ===
 
@@ -699,7 +715,7 @@ function __mountFromRouter(el) {
     __setupI18n(el.__scope, el.__i18n_parent || window.pug_i18n);
   }
 
-  if (el.parentNode === __router) {
+  if (el.parentNode === window.pug_router) {
     var _t = el.__scope.$_target;
     var _chain = [];
     if (_t.$title) _chain.push(_t.$title);
@@ -782,7 +798,7 @@ var PUG_PAGE_HOOK = {
       var renderFn = makeRenderFn(vn.elm, vn.elm.__tplFn);
       vn.elm.__scope.$_target.$renderFn = renderFn;
       renderFn(vn.elm.__scope);
-      if (vn.elm.parentNode === __router) {
+      if (vn.elm.parentNode === window.pug_router) {
         var _pt = vn.elm.__scope.$_target;
         var _pc = [];
         if (_pt.$title) _pc.push(_pt.$title);
@@ -849,23 +865,23 @@ function onUrlChange() {
   var routeEntry = buildRouteEntry(pageFn, layoutList, routeKey, resolvedPath);
 
   // Patch the router
-  if (!__router) {
-    __router = document.createElement("pug-router");
+  if (!window.pug_router) {
+    window.pug_router = document.createElement("pug-router");
     document.body.innerHTML = "";
-    document.body.appendChild(__router);
-    __router._childVdom = null;
+    document.body.appendChild(window.pug_router);
+    Object.assign(window.pug_router, { _childVdom: null, $childScopes: [], $_target: window.pug_router, $parentScope: null });
   }
 
-  if (__router._childVdom) {
-    __router._childVdom = __patch(__router._childVdom, routeEntry);
+  if (window.pug_router._childVdom) {
+    window.pug_router._childVdom = __patch(window.pug_router._childVdom, routeEntry);
   } else {
-    __router.innerHTML = "";
+    window.pug_router.innerHTML = "";
     var mount = document.createElement("div");
-    __router.appendChild(mount);
-    __router._childVdom = __patch(mount, routeEntry);
+    window.pug_router.appendChild(mount);
+    window.pug_router._childVdom = __patch(mount, routeEntry);
   }
 
-  initScopedForms(__router);
+  initScopedForms(window.pug_router);
 }
 
 // === Navigation ===
@@ -880,19 +896,27 @@ window.navigateTo = function (url) {
   onUrlChange();
 };
 
-window.updatePage = function () {
-  if (!__router) return;
-  var scopes = __router.querySelectorAll("[__scope]");
-  for (var i = 0; i < scopes.length; i++) {
-    var scope = scopes[i].__scope;
-    if (scope && scope.$renderFn && scope.$deps) {
-      var deps = scope.$deps;
-      if (deps.has("$user") || deps.has("$page")) {
-        markDirty(scope);
-      }
+function updatePage() {
+  if (window.pug_router) {
+    var children = window.pug_router.$childScopes;
+    for (var i = 0; i < children.length; i++) {
+      markMatchingScopes(children[i]);
     }
   }
-};
+}
+
+function markMatchingScopes(scope) {
+  if (!scope || !scope.$deps) return;
+  if (scope.$deps.has("$user") || scope.$deps.has("$page")) {
+    markDirty(scope);
+  }
+  var children = scope.$_target.$childScopes;
+  for (var i = 0; i < children.length; i++) {
+    markMatchingScopes(children[i]);
+  }
+}
+
+window.updatePage = updatePage;
 
 // === Component Registration ===
 
