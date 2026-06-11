@@ -158,19 +158,16 @@ function wrapWithScope(code: string, scopeId: string): string {
   return code.replace("return ", `return ${inject}(`).slice(0, -1) + ");";
 }
 
-function generateCases(modules: { path: string; code: string }[]): string {
+function generateCases(modules: { path: string; code: string; initCode: string }[]): string {
   return modules.map((mod) => {
     const fnBody = JSON.stringify(`with(data) {\n${mod.code}\n}`);
-    return `  ${JSON.stringify(mod.path)}: new Function("data", ${fnBody})`;
+    const fn = `new Function("data", ${fnBody})`;
+    if (mod.initCode) {
+      const initFn = `new Function("data", ${JSON.stringify(`with(data){${mod.initCode}}`)})`;
+      return `  ${JSON.stringify(mod.path)}: Object.assign(${fn}, { init: ${initFn} })`;
+    }
+    return `  ${JSON.stringify(mod.path)}: ${fn}`;
   }).join(",\n");
-}
-
-function generateInitObj(modules: { path: string; initCode: string }[]): string {
-  const initEntries = modules
-    .filter(m => m.initCode)
-    .map(m => `  ${JSON.stringify(m.path)}: new Function("data", ${JSON.stringify(`with(data){${m.initCode}}`)})`)
-    .join(",\n");
-  return initEntries ? `{\n${initEntries}\n}` : `{}`;
 }
 
 function bundleModules(
@@ -186,17 +183,13 @@ function bundleModules(
   const componentCases = generateCases(componentModules);
   const allModules = [...pageModules, ...componentModules];
   const allPaths = allModules.map(m => m.path);
-  const allInit = generateInitObj(allModules);
   const componentPaths = componentModules.map(m => m.path);
-  const componentInit = generateInitObj(componentModules);
 
   return `window.__pugpage = {
   layoutMap: ${JSON.stringify(layoutMap)},
   layoutChain: ${JSON.stringify(layoutChain)},
   pageCases: {${pageCases}},
   componentCases: {${componentCases}},
-  pageInit: ${allInit},
-  componentInit: ${componentInit},
   pagePaths: ${JSON.stringify(allPaths)},
   componentPaths: ${JSON.stringify(componentPaths)},
   pugI18n: ${JSON.stringify(globalI18n)},

@@ -17,33 +17,31 @@ function __initRegistries() {
   var _ref = data || {};
   var pageCases = _ref.pageCases || {};
   var componentCases = _ref.componentCases || {};
-  var pageInit = _ref.pageInit || {};
-  var componentInit = _ref.componentInit || {};
   var pagePaths = _ref.pagePaths || [];
   var componentPaths = _ref.componentPaths || [];
 
-  function buildRegistry(cases, init) {
+  function buildRegistry(cases) {
     var cache = {};
     function lookup(filePath) {
       if (cache[filePath]) return cache[filePath];
       var raw = cases[filePath];
       if (raw) {
         var fn = function(data) { return raw(data); };
+        fn.init = raw.init || null;
         cache[filePath] = fn;
         return fn;
       }
       return null;
     }
     lookup.__cache = cache;
-    lookup.__init = init;
     return lookup;
   }
 
-  window.pug_components = buildRegistry(componentCases, componentInit);
+  window.pug_components = buildRegistry(componentCases);
   window.pug_components.__paths = componentPaths;
 
   var componentLookup = window.pug_components;
-  var pageLookup = buildRegistry(pageCases, pageInit);
+  var pageLookup = buildRegistry(pageCases);
   window.pug_pages = function(filePath) {
     var result = pageLookup(filePath);
     if (!result) result = componentLookup(filePath);
@@ -51,7 +49,6 @@ function __initRegistries() {
   };
   window.pug_pages.__cache = pageLookup.__cache;
   window.pug_pages.__paths = pagePaths;
-  window.pug_pages.__init = pageInit;
 
   window.__layout_map = data.layoutMap || {};
   window.__layout_chain = data.layoutChain || {};
@@ -807,13 +804,12 @@ function buildRouteEntry(pageFn, layoutList, routeKey, pageTemplate) {
   for (var i = 0; i < layoutList.length; i++) {
     var layoutTemplate = layoutList[i];
     var layoutFn = pug_pages(layoutTemplate);
-    var layoutInitFn = pug_pages.__init && pug_pages.__init[layoutTemplate] ? pug_pages.__init[layoutTemplate] : null;
     if (layoutFn) {
-      routeChain.push({ key: "layout:" + layoutTemplate, fn: layoutFn, initFn: layoutInitFn });
+      routeChain.push({ key: "layout:" + layoutTemplate, fn: layoutFn, initFn: layoutFn.init });
     }
   }
 
-  routeChain.push({ key: "route:" + routeKey + ":" + pageTemplate, fn: pageFn });
+  routeChain.push({ key: "route:" + routeKey + ":" + pageTemplate, fn: pageFn, initFn: pageFn.init });
 
   var first = routeChain[0];
   return h("pug-page", {
@@ -920,6 +916,7 @@ function __mountComponent(el) {
   el._rendered = true;
   var tplFn = __resolveComponentTemplate(el.tagName.toLowerCase());
   if (!tplFn) return;
+  var initFn = tplFn.init || null;
   var initial = { $titles: [] };
   if (el.$attrs) {
     for (var k in el.$attrs) {
@@ -928,7 +925,7 @@ function __mountComponent(el) {
   }
   initial.$content = el.$content || null;
   var renderFn = makeRenderFn(el, tplFn);
-  el.__scope = createRenderScope(el, null, renderFn, null, initial);
+  el.__scope = createRenderScope(el, null, renderFn, initFn, initial);
   renderFn(el.__scope);
   var parentScope = __findScopeProxy(el.parentElement);
   var parentI18n = parentScope ? parentScope.$_target.$i18n : window.pug_i18n;

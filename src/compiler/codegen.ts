@@ -14,12 +14,14 @@ let __urlPath = "";
 let __styleIndex = 0;
 let __hasScopedStyles = false;
 let __inScopedForm = false;
+let __pendingInitStmts: string[] = [];
 
 export function generateCode(ast: PugASTNode, urlPath: string): { code: string; initCode: string; hasScopedStyles: boolean } {
   __urlPath = urlPath;
   __styleIndex = 0;
   __hasScopedStyles = false;
   __inScopedForm = false;
+  __pendingInitStmts = [];
   const { exprs, stmts, initStmts } = generateBlock(ast);
 
   const preamble = stmts.length > 0 ? stmts.join(";\n") + ";\n" : "";
@@ -34,7 +36,8 @@ export function generateCode(ast: PugASTNode, urlPath: string): { code: string; 
   }
 
   const code = preamble + returnExpr;
-  const initCode = initStmts.length > 0 ? initStmts.join(";\n") + ";" : "";
+  const allInit = [...initStmts, ...__pendingInitStmts];
+  const initCode = allInit.length > 0 ? allInit.join(";\n") + ";" : "";
   return { code, initCode, hasScopedStyles: __hasScopedStyles };
 }
 interface BlockResult {
@@ -408,6 +411,8 @@ function generateTag(node: PugASTNode): string {
     }
     dataParts.push(`hook: { create(_,vn){vn.elm.$formBodyFn=vn.data.$formBodyFn;vn.elm.$formBodyId=vn.data.$formBodyId;vn.elm.$formBodyInit=vn.data.$formBodyInit;vn.elm.$needsFormScope=true}, insert(vn){window.__mountPage(vn.elm)} }`);
     childrenExpr = "";
+  } else if (blockResult.initStmts.length > 0) {
+    __pendingInitStmts.push(...blockResult.initStmts);
   }
 
   if (isCustomTag(node.name!))
