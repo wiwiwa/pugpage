@@ -8,8 +8,12 @@ import { buildDist } from "./dist.ts";
 import { runTests } from "./test.ts";
 import { initProject } from "./setup.ts";
 
+function getVersion() {
+  return JSON.parse(Deno.readTextFileSync(new URL("../deno.json", import.meta.url))).version;
+}
+
 function printHelp() {
-  console.log(`PugPage CLI
+  console.log(`PugPage v${getVersion()}
 Usage:
   pugpage dev [--root=.] [--port=8000] [--api=URL] [--static=DIR]
   pugpage dist [--root=.] [--out=DIR]
@@ -29,20 +33,27 @@ Options:
   --static  Additional directory to serve static files from
   --out     Output directory for dist build (default: $root/dist)
   -v, --verbose  Show browser console output during tests
+  -V, --version  Print version
 `);
 }
 
 if (import.meta.main) {
   const args = parseArgs(Deno.args,{
     string: ["root", "out", "api", "static", "test"],
-    boolean: ["verbose", "v"],
+    boolean: ["verbose", "v", "version", "V"],
     default: {
       root: ".",
       port: 8000,
       verbose: false,
       v: false,
+      version: false,
+      V: false,
     },
   });
+  if (args.version || args.V) {
+    console.log(`PugPage v${getVersion()}`);
+    Deno.exit(0);
+  }
   switch (args._[0]) {
     case "dev":
       await startDevServer({
