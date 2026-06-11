@@ -104,8 +104,7 @@ export async function startDevServer(opts: {
       if (staticResp.status !== 404 && staticResp.status !== 405) return staticResp;
     }
     if (req.headers.get("accept")?.includes("text/html")) return await indexResponse(root);
-    if (isJsonRequest(req)) return proxyRequest(req, proxyTarget);
-    return resp;
+    return proxyRequest(req, proxyTarget);
   });
 
   if (opts.watch) {
@@ -152,14 +151,6 @@ async function watchAndReload(dir: string, quiet?: boolean) {
         break;
     }
   }
-}
-
-function isJsonRequest(req: Request): boolean {
-  const accept = req.headers.get("accept") ?? "";
-  if (accept.includes("application/json")) return true;
-  const contentType = req.headers.get("content-type") ?? "";
-  if (contentType.includes("application/json")) return true;
-  return false;
 }
 
 function toWebSocketTarget(reqUrl: URL, target: string): URL {
