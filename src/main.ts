@@ -3,13 +3,15 @@
  * Commands: dev, dist, test, install, update
  */
 import { parseArgs } from "@std/cli";
+import { join } from "@std/path";
 import { startDevServer } from "./dev.ts";
 import { buildDist } from "./dist.ts";
 import { runTests } from "./test.ts";
 import { initProject } from "./setup.ts";
 
-function getVersion() {
-  return JSON.parse(Deno.readTextFileSync(new URL("../deno.json", import.meta.url))).version;
+function getVersion(): string {
+  const dir = import.meta.dirname!;
+  return JSON.parse(Deno.readTextFileSync(join(dir, "..", "deno.json"))).version;
 }
 
 function printHelp() {
