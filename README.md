@@ -34,8 +34,9 @@ PugPage is a command-line tool for bundling and serving Pug files, enabling rapi
     - `params`: Query parameters (e.g., `/user/?id=1` returns `{id: '1'}`).
   - `$rest`: Fetch result for REST-backed pages and forms.
 - **Tag Attributes**
-  - `$role`: String or array. Renders tag only if `$user.roles` matches.
+  - `$role`: Space or comma-separated roles. Renders tag only if `$user.roles` matches any listed role.
     - Example: `div($role='USER_ADMIN')` renders only for users with the `USER_ADMIN` role.
+    - Example: `div($role='USER_ADMIN USER_MODERATOR')` renders for users with either role.
   - `$lang`: String or array. Renders tag only if `$user.lang` matches.
     - Example: `div($lang='CN')` renders only for users with language `CN`.
 - **Layout File `layout.pug`**

@@ -194,10 +194,12 @@ During a form submit, `loading` becomes `true`. After any request finishes, PugP
 
 ### `$role`
 
-String or array. Renders tag only if `$user.roles` matches.
+Space or comma-separated roles. Renders tag only if `$user.roles` matches any listed role (OR logic).
 
 ```pug
 div($role='USER_ADMIN') Admin panel
+div($role='USER_ADMIN USER_MODERATOR') Admin or moderator panel
+div($role='USER_ADMIN,USER_MODERATOR') Same as above
 ```
 
 ### `$lang`
