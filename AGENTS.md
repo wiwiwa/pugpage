@@ -79,6 +79,8 @@ After implementing a feature or bug fix:
 
 ## Commit & Pull Request Guidelines
 
+**NEVER auto-commit or auto-release.** Always ask the user for confirmation before running `git commit`, `git tag`, or `git push`. Present the changes and wait for explicit approval.
+
 Always create ONE commit for a single requirement or bug fix — combine runtime, tests, docs, and release artifact changes into a single atomic commit.
 Recent commits use scoped, imperative messages such as `dev: fix: auto-inject livereload script` and `render: fix: forms should be summitted with urlencoded, by default`. Keep the first segment tied to the affected area (`dev`, `render`, `compiler`, `dist`) and state the behavior change clearly.
 

@@ -5,3 +5,6 @@ pug-page(rest='/$$dev/api/login')
     a(href="/render-test") Render Test
   div
     a.showUser(href="/user/1000") Show User 1000
+  div.admin($role='SYS_ADMIN') Admin
+  div.multi($role='SYS_ADMIN TENANT_ADMIN') Multi
+  div.comma($role='SYS_ADMIN,TENANT_ADMIN') Comma

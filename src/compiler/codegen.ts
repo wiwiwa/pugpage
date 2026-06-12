@@ -440,7 +440,8 @@ function generateTag(node: PugASTNode): string {
 }
 
 function buildRoleCondition(val: string): string {
-  const roles = val.split(/[\s,]+/).map((r: string) => JSON.stringify(r));
+  const raw = isStaticString(val) ? extractString(val) : val;
+  const roles = raw.split(/[\s,]+/).map((r: string) => JSON.stringify(r));
   return `$user.roles && [${roles.join(",")}].some(function(r){return $user.roles.includes(r)})`;
 }
 
