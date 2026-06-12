@@ -3,17 +3,23 @@
  * Commands: dev, dist, test, install, update
  */
 import { parseArgs } from "@std/cli";
+import { join } from "@std/path";
 import { startDevServer } from "./dev.ts";
 import { buildDist } from "./dist.ts";
 import { runTests } from "./test.ts";
 import { initProject } from "./setup.ts";
 
-function getVersion() {
-  return JSON.parse(Deno.readTextFileSync(new URL("../deno.json", import.meta.url))).version;
+async function getVersion(): Promise<string> {
+  const jsonUrl = new URL("../deno.json", import.meta.url);
+  if (jsonUrl.protocol === "file:") {
+    return JSON.parse(Deno.readTextFileSync(join(import.meta.dirname!, "..", "deno.json"))).version;
+  }
+  const mod = await import(jsonUrl.href, { with: { type: "json" } });
+  return mod.default.version;
 }
 
-function printHelp() {
-  console.log(`PugPage v${getVersion()}
+async function printHelp() {
+  console.log(`PugPage v${await getVersion()}
 Usage:
   pugpage dev [--root=.] [--port=8000] [--api=URL] [--static=DIR]
   pugpage dist [--root=.] [--out=DIR]
@@ -51,7 +57,7 @@ if (import.meta.main) {
     },
   });
   if (args.version || args.V) {
-    console.log(`PugPage v${getVersion()}`);
+    console.log(`PugPage v${await getVersion()}`);
     Deno.exit(0);
   }
   switch (args._[0]) {
@@ -107,7 +113,7 @@ if (import.meta.main) {
       break;
     }
     default:
-      printHelp();
+      await printHelp();
       Deno.exit(1);
   }
 }
