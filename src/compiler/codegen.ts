@@ -444,7 +444,7 @@ function buildRoleCondition(val: string): string {
     const roles = extractString(val).split(/[\s,]+/).map((r: string) => JSON.stringify(r));
     return `$user.roles && [${roles.join(",")}].some(function(r){return $user.roles.includes(r)})`;
   }
-  return `$user.roles && $user.roles.includes(${val})`;
+  return `(!(${val}) || ($user.roles && String(${val}).split(/[\\s,]+/).some(function(r){return $user.roles.includes(r)})))`;
 }
 
 function buildLangCondition(val: string): string {
