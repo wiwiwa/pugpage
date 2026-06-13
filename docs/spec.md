@@ -166,6 +166,18 @@ Current page object. PugPage creates a fresh `$page` object on every route rende
 - `args` — Array of arguments (see URL handling)
 - `params` — Query parameters (e.g., `/user/?id=1` returns `{id: '1'}`)
 
+### `$scope`
+
+Reference to the current scope proxy. Use for computed property access in templates and event handlers.
+
+```pug
+:init
+  field_0 = "hello"
+  field_1 = "world"
+
+button(onclick='$scope["field_" + ((index + 1) % 2)] = "updated"') Toggle
+```
+
 ### `$titles`
 
 Array of `{label, href}` objects for the title chain. Set by `title` tags, readable by layouts for navigation. Reactive — updates when any scope's title changes.

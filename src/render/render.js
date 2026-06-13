@@ -148,6 +148,25 @@ var __RUNTIME_FIELDS = {
 
 var SCOPE_GLOBALS = ["Math", "console", "Date", "JSON", "Array", "Object", "String", "Number", "Boolean", "Error", "parseInt", "parseFloat", "isNaN", "isFinite", "undefined", "NaN", "Infinity", "encodeURIComponent", "decodeURIComponent", "Promise", "Symbol", "Map", "Set", "RegExp", "document", "fetch", "URL", "setTimeout", "clearTimeout", "setInterval", "clearInterval", "requestAnimationFrame", "cancelAnimationFrame"];
 
+function baseGetHandler(t, prop, scopeRef) {
+  if (Object.prototype.hasOwnProperty.call(t, prop)) return t[prop];
+  switch (prop) {
+    case "$scope": return scopeRef;
+    case "$user": return window.$user;
+    case "$page": return window.$page;
+    case "window": return window;
+    default:
+      if (typeof prop !== "string" || prop.charAt(0) === "$") return undefined;
+      if (SCOPE_GLOBALS.indexOf(prop) !== -1) return window[prop];
+      return undefined;
+  }
+}
+
+function hasTrap(t, prop) {
+  if (typeof prop === "string" && prop.charAt(0) === "$" && prop.charAt(1) === "$") return prop in t;
+  return true;
+}
+
 function createRenderScope(element, templateKey, renderFn, initFn, initial) {
   var target = Object.assign(Object.create(null), {
     $element: element,
@@ -176,27 +195,18 @@ function createRenderScope(element, templateKey, renderFn, initFn, initial) {
   });
 
   var scope = new Proxy(target, {
-    has(t, prop) {
-      if (typeof prop === "string" && prop.charAt(0) === "$" && prop.charAt(1) === "$") return prop in t;
-      return true;
-    },
+    has: hasTrap,
     get(t, prop) {
       if (prop === "$titles") t.$deps.add("$titles");
-      if (Object.prototype.hasOwnProperty.call(t, prop))
-        return t[prop];
-      switch (prop) {
-        case "$user": t.$deps.add("$user"); return window.$user;
-        case "$i18n": return t.$i18n;
-        case "$T": return t.__tProxy;
-        case "$page": t.$deps.add("$page"); return window.$page;
-        case "$args": return window.$page.args;
-        case "$params": return window.$page.params;
-        case "window": return window;
-        default:
-          if (typeof prop !== "string" || prop.charAt(0) === "$") return undefined;
-          if (SCOPE_GLOBALS.indexOf(prop) !== -1) return window[prop];
-          return undefined;
-      }
+      if (prop === "$user") t.$deps.add("$user");
+      if (prop === "$page") t.$deps.add("$page");
+      var val = baseGetHandler(t, prop, scope);
+      if (val !== undefined) return val;
+      if (prop === "$i18n") return t.$i18n;
+      if (prop === "$T") return t.__tProxy;
+      if (prop === "$args") return window.$page.args;
+      if (prop === "$params") return window.$page.params;
+      return undefined;
     },
     set(t, prop, value) {
       if (typeof prop === "string" && prop.charAt(0) === "$" && prop !== "$title") {
@@ -353,23 +363,11 @@ function __findScopeProxy(elm) {
 window.__findScopeProxy = __findScopeProxy;
 
 function __handlerScope(scope) {
-  return new Proxy(scope, {
-    has(t, prop) {
-      if (typeof prop === "string" && prop.charAt(0) === "$" && prop.charAt(1) === "$") return prop in t;
-      return true;
-    },
-    get(target, prop) {
-      if (Object.prototype.hasOwnProperty.call(target, prop)) return target[prop];
-      switch (prop) {
-        case "$user": return window.$user;
-        case "$page": return window.$page;
-        case "window": return window;
-        default:
-          if (typeof prop !== "string" || prop.charAt(0) === "$") return undefined;
-          if (SCOPE_GLOBALS.indexOf(prop) !== -1) return window[prop];
-          return undefined;
-      }
-    }
+  var t = scope.$_target;
+  return new Proxy(t, {
+    has: hasTrap,
+    get(target, prop) { return baseGetHandler(target, prop, scope); },
+    set(target, prop, value) { scope[prop] = value; return true; }
   });
 }
 window.__handlerScope = __handlerScope;
