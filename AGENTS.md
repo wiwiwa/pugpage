@@ -90,7 +90,8 @@ Pull requests should include a short description, the commands run, and any rele
 
 Use the `release` skill when releasing. Key constraints:
 - Working tree must be clean before releasing — all changes must already be committed
-- Do NOT create new commits during release — only amend the existing commit if needed
+- Do NOT create new commits during release — only amend the existing commit if needed (e.g. to include regenerated `render.min.js`)
+- Release step is: tag + push only — no commits, no code changes
 - Tag convention: plain semver, no `v` prefix (`1.9.8` not `v1.9.8`)
 - Regenerate `release/render.min.js`, only if `render.js` changed
   - Amend the last commit with render.min.js: `git add release/render.min.js && git commit --amend --no-edit`

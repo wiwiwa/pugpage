@@ -440,9 +440,11 @@ function generateTag(node: PugASTNode): string {
 }
 
 function buildRoleCondition(val: string): string {
-  const raw = isStaticString(val) ? extractString(val) : val;
-  const roles = raw.split(/[\s,]+/).map((r: string) => JSON.stringify(r));
-  return `$user.roles && [${roles.join(",")}].some(function(r){return $user.roles.includes(r)})`;
+  if (isStaticString(val)) {
+    const roles = extractString(val).split(/[\s,]+/).map((r: string) => JSON.stringify(r));
+    return `$user.roles && [${roles.join(",")}].some(function(r){return $user.roles.includes(r)})`;
+  }
+  return `$user.roles && $user.roles.includes(${val})`;
 }
 
 function buildLangCondition(val: string): string {
