@@ -341,7 +341,7 @@ function generateTag(node: PugASTNode): string {
     } else if (a.name.length > 2 && a.name.startsWith("on")) {
       const evtName = a.name.charAt(2).toLowerCase() + a.name.slice(3);
       const handlerCode = isStaticString(a.val) ? extractString(a.val) : a.val;
-      eventEntries.push(`${evtName}: function($event){var __elm=this.elm||this;var __s=window.__findScopeProxy(__elm);try{if(__s){with(window.__handlerScope(__s)){${handlerCode}}}else{${handlerCode}}}catch(e){console.error("PugPage event handler error:",e)}window.__rerenderOnEvent(__elm)}`);
+      eventEntries.push(`${evtName}: function($event){var __elm=this.elm||this;var __s=window.__findScopeProxy(__elm);try{if(__s){with(window.__handlerScope(__s)){${handlerCode}}}else{${handlerCode}}}catch(e){console.error("PugPage event handler error:",e)}}`);
     } else {
       if (isStaticString(a.val)) {
         attrEntries.push(`"${a.name}": ${a.val}`);
@@ -363,7 +363,7 @@ function generateTag(node: PugASTNode): string {
       if (fieldName) {
         const valExpr = node.name === "select" ? "$event.target.value"
           : `($event.target.type === "checkbox") ? $event.target.checked : $event.target.value`;
-        eventEntries.push(`input: function($event){var __elm=this.elm||this;var __s=window.__findScopeProxy(__elm);try{if(__s){__s["${fieldName}"]=${valExpr};window.__rerenderOnEvent(__elm)}}catch(e){console.error("PugPage input binding error:",e)}}`);
+        eventEntries.push(`input: function($event){var __elm=this.elm||this;var __s=window.__findScopeProxy(__elm);try{if(__s){__s["${fieldName}"]=${valExpr}}}catch(e){console.error("PugPage input binding error:",e)}}`);
       }
     }
   }
