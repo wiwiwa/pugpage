@@ -16,34 +16,41 @@ let __hasScopedStyles = false;
 let __inScopedForm = false;
 let __pendingInitStmts: string[] = [];
 
-export function generateCode(ast: PugASTNode, urlPath: string): { code: string; initCode: string; hasScopedStyles: boolean } {
+export function generateCode(ast: PugASTNode, urlPath: string): { code: string; preamble: string; initCode: string; hasScopedStyles: boolean } {
   __urlPath = urlPath;
   __styleIndex = 0;
   __hasScopedStyles = false;
   __inScopedForm = false;
   __pendingInitStmts = [];
-  const { exprs, stmts, initStmts } = generateBlock(ast);
+  const { exprs, stmts, initStmts, mixinDefs } = generateBlock(ast);
 
-  const preamble = stmts.length > 0 ? stmts.join(";\n") + ";\n" : "";
+  const preamble = mixinDefs.length > 0 ? mixinDefs.join(";\n") + ";\n" : "";
 
   let returnExpr: string;
-  if (exprs.length === 0) {
+  if (exprs.length === 0 && stmts.length === 0) {
     returnExpr = 'return window.$h("div");';
-  } else if (exprs.length === 1) {
+  } else if (stmts.length === 0 && exprs.length === 1) {
     returnExpr = `return ${exprs[0]};`;
-  } else {
+  } else if (stmts.length === 0) {
     returnExpr = `return window.$h("div", [\n  ${exprs.join(",\n")}\n]);`;
+  } else {
+    const innerStmts = stmts.join(";\n") + ";\n";
+    const innerRet = exprs.length === 1
+      ? `return ${exprs[0]};`
+      : `return window.$h("div", [\n  ${exprs.join(",\n")}\n]);`;
+    returnExpr = innerStmts + innerRet;
   }
 
-  const code = preamble + returnExpr;
+  const code = returnExpr;
   const allInit = [...initStmts, ...__pendingInitStmts];
   const initCode = allInit.length > 0 ? allInit.join(";\n") + ";" : "";
-  return { code, initCode, hasScopedStyles: __hasScopedStyles };
+  return { code, preamble, initCode, hasScopedStyles: __hasScopedStyles };
 }
 interface BlockResult {
   exprs: string[];
   stmts: string[];
   initStmts: string[];
+  mixinDefs: string[];
 }
 
 function blockToExpr(result: BlockResult): string {
@@ -160,6 +167,7 @@ function generateBlock(node: PugASTNode): BlockResult {
   const exprs: string[] = [];
   const stmts: string[] = [];
   const initStmts: string[] = [];
+  const mixinDefs: string[] = [];
   let inlineParts: string[] = [];
 
   const flushInline = () => {
@@ -242,7 +250,7 @@ function generateBlock(node: PugASTNode): BlockResult {
         if (child.call) {
           exprs.push(generateMixinCall(child));
         } else {
-          stmts.push(generateMixinDef(child));
+          mixinDefs.push(generateMixinDef(child));
         }
         break;
       }
@@ -289,6 +297,7 @@ function generateBlock(node: PugASTNode): BlockResult {
         const sub = generateBlock(child);
         exprs.push(...sub.exprs);
         stmts.push(...sub.stmts);
+        mixinDefs.push(...sub.mixinDefs);
         break;
       }
       case "YieldBlock": {
@@ -304,7 +313,7 @@ function generateBlock(node: PugASTNode): BlockResult {
   }
 
   flushInline();
-  return { exprs, stmts, initStmts };
+  return { exprs, stmts, initStmts, mixinDefs };
 }
 
 function generateTag(node: PugASTNode): string {
@@ -327,26 +336,28 @@ function generateTag(node: PugASTNode): string {
         for (const cls of extractString(a.val).split(/\s+/)) {
           if (cls) selector += "." + cls;
         }
-      } else if (a.val.startsWith("{")) {
+      } else if (typeof a.val === "string" && a.val.startsWith("{")) {
         dynamicClassEntries.push(`...${a.val}`);
-      } else {
+      } else if (typeof a.val === "string") {
         dynamicClassEntries.push(`[${a.val}]: true`);
       }
     } else if (a.name === "id") {
       if (isStaticString(a.val)) {
         selector += "#" + extractString(a.val);
-      } else {
+      } else if (typeof a.val === "string") {
         attrEntries.push(`id: ${a.val}`);
       }
     } else if (a.name.length > 2 && a.name.startsWith("on")) {
       const evtName = a.name.charAt(2).toLowerCase() + a.name.slice(3);
-      const handlerCode = isStaticString(a.val) ? extractString(a.val) : a.val;
+      const handlerCode = isStaticString(a.val) ? extractString(a.val) : (typeof a.val === "string" ? a.val : "");
       eventEntries.push(`${evtName}: function($event){var __elm=this.elm||this;var __s=window.__findScopeProxy(__elm);try{if(__s){with(window.__handlerScope(__s)){${handlerCode}}}else{${handlerCode}}}catch(e){console.error("PugPage event handler error:",e)}}`);
     } else {
       if (isStaticString(a.val)) {
         attrEntries.push(`"${a.name}": ${a.val}`);
-      } else {
+      } else if (typeof a.val === "string") {
         attrEntries.push(`"${a.name}": window.$v(function(){ return ${a.val} })`);
+      } else {
+        attrEntries.push(`"${a.name}": true`);
       }
     }
   }
@@ -381,7 +392,7 @@ function generateTag(node: PugASTNode): string {
 
   const prevScopedForm = __inScopedForm;
   if (needsTpl) __inScopedForm = true;
-  const blockResult = node.block ? generateBlock(node.block) : { exprs: [] as string[], stmts: [] as string[], initStmts: [] as string[] };
+  const blockResult = node.block ? generateBlock(node.block) : { exprs: [] as string[], stmts: [] as string[], initStmts: [] as string[], mixinDefs: [] as string[] };
   __inScopedForm = prevScopedForm;
 
   let childrenExpr = "";
@@ -439,7 +450,8 @@ function generateTag(node: PugASTNode): string {
   return hExpr;
 }
 
-function buildRoleCondition(val: string): string {
+function buildRoleCondition(val: unknown): string {
+  if (typeof val !== "string") return "true";
   if (isStaticString(val)) {
     const roles = extractString(val).split(/[\s,]+/).map((r: string) => JSON.stringify(r));
     return `$user.roles && [${roles.join(",")}].some(function(r){return $user.roles.includes(r)})`;
@@ -447,7 +459,8 @@ function buildRoleCondition(val: string): string {
   return `(!(${val}) || ($user.roles && String(${val}).split(/[\\s,]+/).some(function(r){return $user.roles.includes(r)})))`;
 }
 
-function buildLangCondition(val: string): string {
+function buildLangCondition(val: unknown): string {
+  if (typeof val !== "string") return "true";
   if (val.startsWith("[")) {
     return `$user.lang && ${val}.indexOf($user.lang) >= 0`;
   }
@@ -456,7 +469,7 @@ function buildLangCondition(val: string): string {
 
 function generateInterpolatedTag(node: PugASTNode): string {
   const tagExpr = (node as Record<string, unknown>).expr ?? '"div"';
-  const blockResult = node.block ? generateBlock(node.block) : { exprs: [] as string[], stmts: [] as string[], initStmts: [] as string[] };
+  const blockResult = node.block ? generateBlock(node.block) : { exprs: [] as string[], stmts: [] as string[], initStmts: [] as string[], mixinDefs: [] as string[] };
   const childrenExpr = blockResult.exprs.length > 0
     ? (blockResult.exprs.length === 1 ? blockResult.exprs[0] : `[${blockResult.exprs.join(", ")}]`)
     : "";
@@ -490,7 +503,7 @@ function generateConditional(node: PugASTNode): string {
 
   const conBlock = node.consequent
     ? generateBlock(node.consequent)
-    : { exprs: [] as string[], stmts: [] as string[], initStmts: [] as string[] };
+    : { exprs: [] as string[], stmts: [] as string[], initStmts: [] as string[], mixinDefs: [] as string[] };
 
   let altExpr: string;
   if (node.alternate) {
@@ -557,7 +570,7 @@ function generateCase(node: PugASTNode): string {
     const wExpr = (w as Record<string, unknown>).expr as string;
     const bResult = w.block
       ? generateBlock(w.block)
-      : { exprs: [] as string[], stmts: [] as string[], initStmts: [] as string[] };
+      : { exprs: [] as string[], stmts: [] as string[], initStmts: [] as string[], mixinDefs: [] as string[] };
     const bodyExpr = blockToExpr(bResult);
 
     if (!wExpr || wExpr === "default") {
@@ -583,7 +596,8 @@ function generateWhile(node: PugASTNode): string {
   return `(function() { var __r = []; while (${testExpr}) { __r.push(${bodyExpr}); } return __r; })()`;
 }
 
-function isStaticString(val: string): boolean {
+function isStaticString(val: unknown): boolean {
+  if (typeof val !== "string") return false;
   return (val.startsWith("'") && val.endsWith("'")) ||
     (val.startsWith('"') && val.endsWith('"'));
 }
@@ -645,7 +659,7 @@ function generateMixinDef(node: PugASTNode): string {
 
   const body = node.block
     ? generateBlock(node.block)
-    : { exprs: [] as string[], stmts: [] as string[], initStmts: [] as string[] };
+    : { exprs: [] as string[], stmts: [] as string[], initStmts: [] as string[], mixinDefs: [] as string[] };
 
   let returnExpr: string;
   if (body.exprs.length === 0 && body.stmts.length === 0) {
@@ -660,7 +674,7 @@ function generateMixinDef(node: PugASTNode): string {
     ? `${body.stmts.join("; ")}; return ${returnExpr};`
     : `return ${returnExpr};`;
 
-  return `function __mixin_${name}(${allParams.join(", ")}) { ${funcBody} }`;
+  return `function $$mixin_${name}(${allParams.join(", ")}) { ${funcBody} }`;
 }
 
 function generateMixinCall(node: PugASTNode): string {
@@ -677,5 +691,5 @@ function generateMixinCall(node: PugASTNode): string {
     ? (callArgs ? `${callArgs}, ${blockContentExpr}` : blockContentExpr)
     : callArgs;
 
-  return `__mixin_${name}(${allArgs})`;
+  return `$$mixin_${name}(${allArgs})`;
 }

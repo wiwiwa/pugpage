@@ -47,8 +47,8 @@ export async function compileDirectory(
     // No i18n.yaml — use defaults
   }
 
-  const pageModules: { path: string; code: string; initCode: string }[] = [];
-  const componentModules: { path: string; code: string; initCode: string }[] = [];
+  const pageModules: { path: string; code: string; preamble: string; initCode: string }[] = [];
+  const componentModules: { path: string; code: string; preamble: string; initCode: string }[] = [];
   const layoutMap: Record<string, string | null> = {};
   const layoutChain: Record<string, string | null> = {};
 
@@ -66,12 +66,12 @@ export async function compileDirectory(
     const urlPath = toUrlPath(absPath, base);
 
     const source = await Deno.readTextFile(absPath);
-    const { code, initCode, extendsPath } = compileModule(source, absPath, base, pagePaths);
+    const { code, preamble, initCode, extendsPath } = compileModule(source, absPath, base, pagePaths);
 
     if (isComponentFile(absPath)) {
-      componentModules.push({ path: urlPath, code, initCode });
+      componentModules.push({ path: urlPath, code, preamble, initCode });
     } else {
-      pageModules.push({ path: urlPath, code, initCode });
+      pageModules.push({ path: urlPath, code, preamble, initCode });
     }
 
     const layoutTarget = resolveFileLayout(absPath, extendsPath, layouts, base);
@@ -87,6 +87,7 @@ export async function compileDirectory(
 
 interface ModuleCompileResult {
   code: string;
+  preamble: string;
   initCode: string;
   extendsPath: string | null;
 }
@@ -143,13 +144,13 @@ function compileModule(
   });
   const ast = pugLink(loaded);
   const urlPath = absPath.slice(base.length, -4);
-  const { code, initCode, hasScopedStyles } = generateCode(ast, urlPath);
+  const { code, preamble, initCode, hasScopedStyles } = generateCode(ast, urlPath);
   const scopeId = hasScopedStyles ? hashString(urlPath) : undefined;
 
   if (scopeId) {
-    return { code: wrapWithScope(code, scopeId), initCode, extendsPath };
+    return { code: wrapWithScope(code, scopeId), preamble, initCode, extendsPath };
   }
-  return { code, initCode, extendsPath };
+  return { code, preamble, initCode, extendsPath };
 }
 
 function wrapWithScope(code: string, scopeId: string): string {
@@ -158,9 +159,9 @@ function wrapWithScope(code: string, scopeId: string): string {
   return code.replace("return ", `return ${inject}(`).slice(0, -1) + ");";
 }
 
-function generateCases(modules: { path: string; code: string; initCode: string }[]): string {
+function generateCases(modules: { path: string; code: string; preamble: string; initCode: string }[]): string {
   return modules.map((mod) => {
-    const fnBody = JSON.stringify(`with(data) {\n${mod.code}\n}`);
+    const fnBody = JSON.stringify(`${mod.preamble}with(data) {\n${mod.code}\n}`);
     const fn = `new Function("data", ${fnBody})`;
     if (mod.initCode) {
       const initFn = `new Function("data", ${JSON.stringify(`with(data){${mod.initCode}}`)})`;
@@ -171,8 +172,8 @@ function generateCases(modules: { path: string; code: string; initCode: string }
 }
 
 function bundleModules(
-  pageModules: { path: string; code: string; initCode: string }[],
-  componentModules: { path: string; code: string; initCode: string }[],
+  pageModules: { path: string; code: string; preamble: string; initCode: string }[],
+  componentModules: { path: string; code: string; preamble: string; initCode: string }[],
   layoutMap: Record<string, string | null>,
   layoutChain: Record<string, string | null>,
   renderUrl: string,
