@@ -376,7 +376,7 @@ function generateTag(node: PugASTNode): string {
   const hasRest = node.attrs?.some((a) => (a as { name: string }).name === "rest");
   const hasAction = node.attrs?.some((a) => (a as { name: string }).name === "action");
   const hasHref = node.attrs?.some((a) => (a as { name: string }).name === "href");
-  const needsTpl = (node.name === "pug-page" && hasRest) ||
+  const needsTpl = node.name === "pug-page" ||
     (node.name === "form" && (hasRest || (hasAction && hasHref)));
 
   const prevScopedForm = __inScopedForm;
