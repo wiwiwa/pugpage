@@ -108,10 +108,9 @@ Reserved names:
 
 `createRenderScope(element, templateKey, renderFn, initFn, initial)` creates the scope target and returns the scope proxy used by templates.
 
-There are three proxy modes:
+There are two proxy modes:
 - **render proxy**: passed to compiled templates by `makeRenderFn(element, tplFn)`; tracks render dependencies and marks the scope dirty on application writes
 - **init proxy**: passed to `initFn`; initializes scope state without tracking render dependencies or scheduling rerenders
-- **handler proxy**: wraps the scope for form body rendering and event handlers via `__handlerScope(scope)`; resolves scope locals and exposes `$user`/`$page`/`window` without dependency tracking or `$*` write rejection — form bodies write `$title` and other fields directly through the underlying render proxy's set handler
 
 The render proxy:
 - prevents assignment leakage from `with(data) { ... }`

@@ -362,16 +362,6 @@ function __findScopeProxy(elm) {
 }
 window.__findScopeProxy = __findScopeProxy;
 
-function __handlerScope(scope) {
-  var t = scope.$_target;
-  return new Proxy(t, {
-    has: hasTrap,
-    get(target, prop) { return baseGetHandler(target, prop, scope); },
-    set(target, prop, value) { scope[prop] = value; return true; }
-  });
-}
-window.__handlerScope = __handlerScope;
-
 function __rerenderOnEvent(elm) {
   var el = elm;
   while (el) {

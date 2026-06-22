@@ -15,6 +15,18 @@ let __styleIndex = 0;
 let __hasScopedStyles = false;
 let __inScopedForm = false;
 let __pendingInitStmts: string[] = [];
+const __mixinDefs = new Map<string, PugASTNode>();
+
+function collectMixins(n: unknown): void {
+  if (!n || typeof n !== "object") return;
+  const node = n as PugASTNode;
+  if (node.type === "Mixin" && !node.call && node.name)
+    __mixinDefs.set(node.name, node);
+  if (Array.isArray(n)) return n.forEach(collectMixins);
+  for (const k in n)
+    if (Object.prototype.hasOwnProperty.call(n, k))
+      collectMixins((n as Record<string, unknown>)[k]);
+}
 
 export function generateCode(ast: PugASTNode, urlPath: string): { code: string; initCode: string; hasScopedStyles: boolean } {
   __urlPath = urlPath;
@@ -22,6 +34,8 @@ export function generateCode(ast: PugASTNode, urlPath: string): { code: string; 
   __hasScopedStyles = false;
   __inScopedForm = false;
   __pendingInitStmts = [];
+  __mixinDefs.clear();
+  collectMixins(ast);
   const { exprs, stmts, initStmts } = generateBlock(ast);
 
   const preamble = stmts.length > 0 ? stmts.join(";\n") + ";\n" : "";
@@ -239,11 +253,8 @@ function generateBlock(node: PugASTNode): BlockResult {
       }
       case "Mixin": {
         flushInline();
-        if (child.call) {
+        if (child.call)
           exprs.push(generateMixinCall(child));
-        } else {
-          stmts.push(generateMixinDef(child));
-        }
         break;
       }
       case "MixinBlock": {
@@ -341,7 +352,7 @@ function generateTag(node: PugASTNode): string {
     } else if (a.name.length > 2 && a.name.startsWith("on")) {
       const evtName = a.name.charAt(2).toLowerCase() + a.name.slice(3);
       const handlerCode = isStaticString(a.val) ? extractString(a.val) : (typeof a.val === "string" ? a.val : "");
-      eventEntries.push(`${evtName}: function($event){var __elm=this.elm||this;var __s=window.__findScopeProxy(__elm);try{if(__s){with(window.__handlerScope(__s)){${handlerCode}}}else{${handlerCode}}}catch(e){console.error("PugPage event handler error:",e)}}`);
+      eventEntries.push(`${evtName}: function($event){try{${handlerCode}}catch(e){console.error("PugPage event handler error:",e)}}`);
     } else {
       if (isStaticString(a.val)) {
         attrEntries.push(`"${a.name}": ${a.val}`);
@@ -365,7 +376,7 @@ function generateTag(node: PugASTNode): string {
       if (fieldName) {
         const valExpr = node.name === "select" ? "$event.target.value"
           : `($event.target.type === "checkbox") ? $event.target.checked : $event.target.value`;
-        eventEntries.push(`input: function($event){var __elm=this.elm||this;var __s=window.__findScopeProxy(__elm);try{if(__s){__s["${fieldName}"]=${valExpr}}}catch(e){console.error("PugPage input binding error:",e)}}`);
+        eventEntries.push(`input: function($event){try{$scope["${fieldName}"]=${valExpr}}catch(e){console.error("PugPage input binding error:",e)}}`);
       }
     }
   }
@@ -396,7 +407,7 @@ function generateTag(node: PugASTNode): string {
     const innerRet = blockResult.exprs.length === 1
       ? `return ${blockResult.exprs[0]};`
       : `return [].concat(${blockResult.exprs.join(", ")});`;
-    childrenExpr = `(function(__d) { with(window.__handlerScope(__d)) { ${innerStmts} ${innerRet} } })(data)`;
+    childrenExpr = `(function(__d) { with(__d) { ${innerStmts} ${innerRet} } })(data)`;
   }
 
   if (needsTpl && childrenExpr) {
@@ -640,16 +651,30 @@ function splitMixinArgs(argsStr: string): string[] {
   return args;
 }
 
-function generateMixinDef(node: PugASTNode): string {
+function generateMixinCall(node: PugASTNode): string {
   const name = node.name!;
-  const paramNames = splitMixinArgs(node.args || "");
-  const needsBlockParam = node.block ? hasMixinBlock(node.block) : false;
+  const def = __mixinDefs.get(name);
+  if (!def) return "null";
 
+  const paramNames = splitMixinArgs(def.args || "");
+  const needsBlockParam = def.block ? hasMixinBlock(def.block) : false;
   const allParams = [...paramNames];
   if (needsBlockParam) allParams.push("__block_content");
 
-  const body = node.block
-    ? generateBlock(node.block)
+  const callArgs = splitMixinArgs(node.args || "").map((a) => a.trim()).filter(Boolean).join(", ");
+
+  let blockContentExpr = "";
+  if (node.block) {
+    const blockResult = generateBlock(node.block);
+    blockContentExpr = blockToExpr(blockResult);
+  }
+
+  const allArgs = blockContentExpr
+    ? (callArgs ? `${callArgs}, ${blockContentExpr}` : blockContentExpr)
+    : callArgs;
+
+  const body = def.block
+    ? generateBlock(def.block)
     : { exprs: [] as string[], stmts: [] as string[], initStmts: [] as string[] };
 
   let returnExpr: string;
@@ -665,22 +690,5 @@ function generateMixinDef(node: PugASTNode): string {
     ? `${body.stmts.join("; ")}; return ${returnExpr};`
     : `return ${returnExpr};`;
 
-  return `function $$mixin_${name}(${allParams.join(", ")}) { ${funcBody} }`;
-}
-
-function generateMixinCall(node: PugASTNode): string {
-  const name = node.name!;
-  const callArgs = splitMixinArgs(node.args || "").map((a) => a.trim()).filter(Boolean).join(", ");
-
-  let blockContentExpr = "";
-  if (node.block) {
-    const blockResult = generateBlock(node.block);
-    blockContentExpr = blockToExpr(blockResult);
-  }
-
-  const allArgs = blockContentExpr
-    ? (callArgs ? `${callArgs}, ${blockContentExpr}` : blockContentExpr)
-    : callArgs;
-
-  return `$$mixin_${name}(${allArgs})`;
+  return `(function(${allParams.join(", ")}) { ${funcBody} })(${allArgs})`;
 }
