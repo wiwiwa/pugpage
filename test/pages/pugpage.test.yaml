@@ -82,3 +82,26 @@ user:
       nav.breadcrumb a: PugPage
     no:
       nav.breadcrumb a: demo
+sse:
+  standard stream updates:
+  - goto: /sse-test
+    has:
+      "#loading": "Loading: false"
+    wait:
+      - "#count": "Count: 3"
+  stream connection disposal check:
+  - goto: /sse-test
+    wait:
+      - "#count": "Count: 2"
+  - goto: /
+  - goto: /$$dev/api/sse-connections
+    has:
+      body: '"count":0'
+  form stream rejection:
+  - goto: /sse-form
+    has:
+      "#status": "Status: 415"
+      "#error": "Error: Streaming not supported on forms"
+  auth redirect:
+  - goto: /sse-auth
+    url: /login

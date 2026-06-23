@@ -1,0 +1,8 @@
+extends NONE
+pug-page(rest="/$$dev/api/sse")
+  :init
+    count = 0
+  h1 SSE Test
+  p#count Count: #{count}
+  p#loading Loading: #{$rest.loading}
+  p#error Error: #{$rest.error}

@@ -1,0 +1,5 @@
+extends NONE
+h1 SSE Form Test
+form(rest="/$$dev/api/sse-form" action="/$$dev/api/echo")
+  p#status Status: #{$rest.status}
+  p#error Error: #{$rest.error}

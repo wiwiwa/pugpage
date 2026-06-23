@@ -1,0 +1,7 @@
+extends NONE
+pug-page(rest="/$$dev/api/sse-auth")
+  :init
+    count = 0
+  h1 SSE Auth Test
+  p#count Count: #{count}
+  p#error Error: #{$rest.error}

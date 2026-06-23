@@ -151,15 +151,21 @@ Rules:
 - `href` navigates only after a successful submit.
 - initial fetch and submit both update the form scope `$rest`.
 - plain object response data shallow-merges non-`$*` plain-object fields into the form scope.
+- forms reject streaming: if a form's `rest` endpoint returns `text/event-stream`, `$rest.status` is set to `415` with an error message. Forms require single-payload responses.
 
 ### REST State
 
 `$rest` is always an object:
 ```js
-{ status: number | null, data: unknown, loading: boolean, headers: object }
+{ status: number | null, data: unknown, loading: boolean, headers: object, error: string | null }
 ```
 
-REST responses update `$rest`. Successful plain-object response data is also shallow-merged into the owning scope, skipping `$*` keys. REST merges only non-`$*` plain-object fields.
+REST responses update `$rest`. Successful plain-object response data is also shallow-merged into the owning scope, skipping `$*` keys. REST merges only non-`$*` plain-object fields. If the response Content-Type is `text/event-stream`, the connection switches to streaming mode.
+* `$rest.loading` is set to `true` during the initial connection handshake and becomes `false` as soon as the HTTP headers are received.
+* Individual event payload data is parsed from JSON and merged as a delta patch into the scope.
+* Named events with no data field are parsed but ignored (no state update or render trigger occurs).
+* Connections auto-reconnect on network drops (or 429 Too Many Requests) with exponential backoff up to 30 seconds. Other 4xx client errors do not auto-reconnect.
+* Stream reader and timers are cleaned up cleanly in `scopeDisposal`.
 
 ### Title Contract
 
@@ -293,6 +299,7 @@ Key source entry points:
 - `markDirty(scope)`
 - `window.updatePage()`
 - `fetchIntoScope(restUrl, scope, fetchOpts)`
+- `handleSseStream(initialRes, url, scope, fetchOpts)`
 
 Rules:
 - `$page` is replaced as a whole object on route changes.
@@ -300,6 +307,8 @@ Rules:
 - `$user` reads track the `user` dependency.
 - `window.updatePage()` dirties scopes that read `$user`.
 - REST merges only non-`$*` plain-object fields into scope.
+- `fetchIntoScope` sniffs the response `Content-Type`; if `text/event-stream`, it delegates to `handleSseStream` which owns the persistent reader loop, event parsing, reconnection backoff, and `Last-Event-ID` resume.
+- `scopeDisposal` cancels any active SSE reader and clears pending reconnection timers via `$sseController.close()`.
 
 ### Forms
 

@@ -6,7 +6,7 @@ PugPage is a command-line tool for bundling and serving Pug files, enabling rapi
   - **`pug-page`**
     - Usage: `pug-page(src='user.pug' rest='/api/user/1000')`
     - `src`: Pug template to render
-    - `rest`: RESTful JSON resource for rendering
+    - `rest`: RESTful JSON resource, or SSE stream for real-time updates (auto-detected from response `Content-Type`)
   - Pug page `*-*.pug` as custom tag:
     - Custom tag are resolved at the dir of parent .pug file, or `/compoents`
       - e.g. `my-tag` is equivelent with `pug-page(src='my-tag.pug')` or `pug-page(src='/component/my-tag.pug')`, if either one exists
@@ -32,7 +32,7 @@ PugPage is a command-line tool for bundling and serving Pug files, enabling rapi
     - `path`: Page path.
     - `args`: Array of arguments (see URL handling).
     - `params`: Query parameters (e.g., `/user/?id=1` returns `{id: '1'}`).
-  - `$rest`: Fetch result for REST-backed pages and forms.
+  - `$rest`: Fetch result for REST-backed pages and forms. `{ status, data, loading, headers, error }`.
 - **Tag Attributes**
   - `$role`: Space or comma-separated roles. Renders tag only if `$user.roles` matches any listed role.
     - Example: `div($role='USER_ADMIN')` renders only for users with the `USER_ADMIN` role.

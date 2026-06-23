@@ -9,7 +9,7 @@ pug-page(src='user.pug' rest='/api/user/1000')
 ```
 
 - `src` — Pug template to render
-- `rest` — RESTful JSON resource for rendering
+- `rest` — RESTful JSON resource for rendering. When the response `Content-Type` is `text/event-stream`, the connection auto-upgrades to SSE streaming (see [SSE Streaming](#sse-streaming)).
 
 ### Custom Tags (Hyphenated `.pug` files)
 
@@ -108,6 +108,8 @@ form(rest action='/api/user/1' href='/user/1')
 
 The initial `rest` request and the submit `action` response both update `$rest`. If response `data` is a plain object, PugPage also shallow-merges safe fields into the current scope.
 
+Forms do not support streaming. If a form's `rest` endpoint returns `text/event-stream`, PugPage rejects it with `$rest.status: 415` and `$rest.error` set to an explanatory message.
+
 ---
 
 ## Reactivity
@@ -184,21 +186,58 @@ Array of `{label, href}` objects for the title chain. Set by `title` tags, reada
 
 ### `$rest`
 
-Fetch result for REST-backed pages and forms. `$rest` is always an object.
+Fetch result for REST-backed pages and forms. `$rest` is always an object:
+
+```js
+{ status: number | null, data: unknown, loading: boolean, headers: object, error: string | null }
+```
+
+- `status` — HTTP status code, or `null` before the first response
+- `data` — parsed response body (JSON object, primitive, or raw string)
+- `loading` — `true` while a request is in flight
+- `headers` — response headers as a plain object
+- `error` — error message on failure, or `null`
 
 Before a `<pug-page rest>` request finishes:
 
 ```js
-{ status: null, data: null, loading: true, headers: {} }
+{ status: null, data: null, loading: true, headers: {}, error: null }
 ```
 
 Before a form initial `rest` request or submit starts:
 
 ```js
-{ status: null, data: null, loading: false, headers: {} }
+{ status: null, data: null, loading: false, headers: {}, error: null }
 ```
 
-During a form submit, `loading` becomes `true`. After any request finishes, PugPage sets `status`, `data`, `headers`, and `loading: false`.
+During a form submit, `loading` becomes `true`. After any request finishes, PugPage sets `status`, `data`, `headers`, `error`, and `loading: false`.
+
+#### SSE Streaming
+
+If the `rest` response has `Content-Type: text/event-stream`, the connection automatically upgrades to streaming mode. No template changes are needed — the same `rest` attribute works for both one-off JSON and persistent SSE:
+
+```pug
+pug-page(rest="/api/dashboard/stats")
+```
+
+Each SSE event is parsed and applied:
+
+- `data:` — JSON-parsed and shallow-merged into the scope (same delta-patch semantics as JSON responses). Also stored in `$rest.data`.
+- `id:` — stored internally; sent as the `Last-Event-ID` header on reconnect so the server can resume from the last received event.
+- `retry:` — sets the reconnection delay in milliseconds (must be positive; non-positive values are ignored).
+- Named events (`event:` field) with no `data:` field are silently ignored — no state update or render trigger.
+
+`$rest.loading` becomes `false` as soon as HTTP headers arrive (not when the stream closes). `$rest.error` is set on connection failures and cleared (`null`) on successful reconnection.
+
+**Reconnection:**
+
+- Network drops, 5xx errors, and 429 Too Many Requests: auto-reconnect with exponential backoff (3s → 6s → 12s → 24s → 30s cap, reset to base on success)
+- Other 4xx client errors (400, 403, 404, etc.): no reconnect; `$rest.error` is set
+- 401 Unauthorized: triggers `$user.logout()` (redirects to `$user.loginUrl`)
+
+The stream lifecycle is tied to the scope. Navigating away, replacing the element, or destroying the scope cancels the stream reader and clears any pending reconnection timers automatically.
+
+Forms reject SSE: if a `form(rest=...)` initial fetch returns `text/event-stream`, `$rest.status` is set to `415` with an explanatory error (forms require single-payload responses).
 
 ---
 
@@ -332,6 +371,14 @@ style(scoped=false).
 ## Web Component Support
 
 Third-party web components work in Pug templates. Unknown tags pass through to the DOM as-is.
+
+---
+
+## Security
+
+- **Output escaping**: `= expr` is HTML-escaped (rendered as text). `!= expr` and `!{expr}` emit **raw HTML** — use only with trusted content, never with user-controlled data.
+- **URL navigation**: `navigateTo()` and `<a>` click-handling block the script-bearing schemes `javascript:`, `vbscript:`, and `data:` — such URLs raise an error and are not navigated. `http:`, `https:`, and other non-script schemes (`mailto:`, `tel:`, …) are unaffected.
+- **URL attributes (`href`, `src`, `action`, etc.)**: when bound to dynamic data (e.g. `a(href=userInput)`), the value is applied verbatim via `setAttribute`. PugPage does **not** sanitize these — a value like `javascript:alert(1)` still renders a dangerous link even though *clicking* it is later blocked. When binding untrusted input to a URL attribute, sanitize the scheme yourself (e.g. restrict to `http:`/`https:`).
 
 ---
 

@@ -297,6 +297,12 @@ function createOrReuseScope(element, templateKey, renderFn, initFn, initial, def
 
 function scopeDisposal(scope) {
   var t = scope.$_target;
+
+  if (t.$sseController) {
+    t.$sseController.close();
+    t.$sseController = null;
+  }
+
   if (t.$title != null) {
     t.$title = null;
     propagateTitleChange(scope);
@@ -466,7 +472,8 @@ function documentTitle(titles) {
 async function fetchIntoScope(restUrl, scope, fetchOpts) {
   var url = new URL(restUrl, window.location.href);
   var sameOrigin = url.origin === window.location.origin;
-  var opts = fetchOpts || { headers: { "Accept": "application/json" } };
+  var opts = Object.assign({}, fetchOpts || {});
+  opts.headers = Object.assign({ "Accept": "text/event-stream, application/json;q=0.9" }, opts.headers);
 
   if (sameOrigin) {
     opts.credentials = "same-origin";
@@ -474,22 +481,59 @@ async function fetchIntoScope(restUrl, scope, fetchOpts) {
     if (auth) opts.headers["Authorization"] = auth;
   }
 
+  // Cancel any existing SSE connection on this scope target before starting a new one
+  var t = scope.$_target;
+  if (t.$sseController) {
+    t.$sseController.close();
+    t.$sseController = null;
+  }
+
   var res;
   try {
     res = await fetch(url.href, opts);
   } catch (e) {
-    scope.$_target.$rest = { status: 0, data: { error: e.message }, loading: false, headers: {} };
+    t.$rest = { status: 0, data: { error: e.message }, loading: false, headers: {}, error: e.message };
     return null;
   }
 
+  if (res.status === 401) {
+    var loginUrl = window.$user.loginUrl || "/login";
+    var currentPath = window.location.pathname;
+    if (currentPath !== loginUrl && currentPath !== loginUrl + "/") {
+      window.$user.logout();
+      return res;
+    }
+  }
+
+  var contentType = res.headers.get("content-type") || "";
+  if (contentType.includes("text/event-stream")) {
+    // Reject streaming responses on forms
+    if (t.$element && t.$element.tagName === "FORM") {
+      t.$rest = {
+        status: 415,
+        data: null,
+        loading: false,
+        headers: {},
+        error: "Streaming not supported on forms"
+      };
+      return res;
+    }
+
+    // Start background stream connection
+    handleSseStream(res, url, scope, opts);
+    return res;
+  }
+
+  // Standard JSON Response logic
   var data = null;
   try { data = await res.json(); } catch (e) { /* non-JSON response */ }
 
   var hdrs = res.headers;
-  scope.$_target.$rest = {
+  t.$rest = {
     status: res.status,
     data: data,
     loading: false,
+    error: null,
     get headers() {
       var obj = {};
       hdrs.forEach(function (v, k) { obj[k] = v; });
@@ -501,6 +545,197 @@ async function fetchIntoScope(restUrl, scope, fetchOpts) {
   }
 
   return res;
+}
+
+function handleSseStream(initialRes, url, scope, fetchOpts) {
+  var t = scope.$_target;
+  var lastEventId = null;
+  var initialDelay = 3000;
+  var reconnectDelay = initialDelay;
+  var isClosed = false;
+
+  t.$sseController = {
+    close: function () {
+      isClosed = true;
+      if (t.$sseReader) {
+        try { t.$sseReader.cancel(); } catch (e) {}
+        t.$sseReader = null;
+      }
+      if (t.$sseTimer) {
+        clearTimeout(t.$sseTimer);
+        t.$sseTimer = null;
+      }
+    }
+  };
+
+  async function connect(activeRes) {
+    if (isClosed) return;
+
+    var res = activeRes;
+    if (!res) {
+      var opts = Object.assign({}, fetchOpts);
+      opts.headers = Object.assign({}, opts.headers);
+      // Re-read authorization header to handle rotation/refresh
+      var auth = __readAuthHeader();
+      if (auth) opts.headers["Authorization"] = auth;
+      else delete opts.headers["Authorization"];
+
+      if (lastEventId) {
+        opts.headers["Last-Event-ID"] = lastEventId;
+      }
+
+      try {
+        res = await fetch(url.href, opts);
+      } catch (e) {
+        handleError(e);
+        return;
+      }
+    }
+
+    if (res.status === 401) {
+      window.$user.logout();
+      return;
+    }
+
+    // Stop retrying on client errors (400 <= status < 500), except 429 (Too Many Requests)
+    if (res.status >= 400 && res.status < 500 && res.status !== 429) {
+      t.$rest = {
+        status: res.status,
+        data: t.$rest ? t.$rest.data : null,
+        loading: false,
+        headers: {},
+        error: "HTTP " + res.status
+      };
+      markDirty(scope);
+      return;
+    }
+
+    if (!res.ok) {
+      handleError(new Error("HTTP " + res.status));
+      return;
+    }
+
+    // Reset reconnect delay on successful connection
+    reconnectDelay = initialDelay;
+
+    var hdrs = res.headers;
+    t.$rest = {
+      status: res.status,
+      data: t.$rest ? t.$rest.data : null,
+      loading: false,
+      error: null,
+      get headers() {
+        var obj = {};
+        hdrs.forEach(function (v, k) { obj[k] = v; });
+        return obj;
+      }
+    };
+    markDirty(scope);
+
+    var reader;
+    try {
+      reader = res.body.getReader();
+      t.$sseReader = reader;
+    } catch (e) {
+      handleError(e);
+      return;
+    }
+
+    var decoder = new TextDecoder();
+    var buffer = "";
+
+    try {
+      while (true) {
+        var result = await reader.read();
+        if (result.done) break;
+        buffer += decoder.decode(result.value, { stream: true });
+
+        var parts = buffer.split(/\r?\n\r?\n/);
+        buffer = parts.pop();
+        for (var i = 0; i < parts.length; i++) {
+          processMessage(parts[i]);
+        }
+      }
+    } catch (e) {
+      if (!isClosed) handleError(e);
+      return;
+    }
+
+    t.$sseReader = null;
+    if (!isClosed) {
+      scheduleReconnect();
+    }
+  }
+
+  function processMessage(block) {
+    var lines = block.split(/\r?\n/);
+    var dataStr = "";
+    for (var i = 0; i < lines.length; i++) {
+      var line = lines[i];
+      if (line.charAt(0) === ":") continue;
+
+      var colonIdx = line.indexOf(":");
+      if (colonIdx === -1) continue;
+
+      var field = line.slice(0, colonIdx).trim();
+      var value = line.slice(colonIdx + 1);
+      if (value.charAt(0) === " ") value = value.slice(1);
+
+      if (field === "data") {
+        dataStr += (dataStr ? "\n" : "") + value;
+      } else if (field === "id") {
+        lastEventId = value;
+      } else if (field === "retry") {
+        var delay = parseInt(value, 10);
+        // Protect against tight 0ms reconnect loops (SSE spec requires positive delay)
+        if (!isNaN(delay) && delay > 0) {
+          initialDelay = delay;
+          reconnectDelay = delay;
+        }
+      }
+    }
+
+    if (dataStr) {
+      var data = null;
+      try {
+        data = JSON.parse(dataStr);
+      } catch (e) {
+        data = dataStr;
+      }
+
+      t.$rest.data = data;
+      if (data && typeof data === "object" && !Array.isArray(data)) {
+        mergeRestData(scope, data);
+      }
+      markDirty(scope);
+    }
+  }
+
+  function handleError(err) {
+    t.$sseReader = null;
+    t.$rest = {
+      status: t.$rest ? t.$rest.status : 0,
+      data: t.$rest ? t.$rest.data : null,
+      loading: false,
+      headers: t.$rest ? t.$rest.headers : {},
+      error: err.message
+    };
+    markDirty(scope);
+    scheduleReconnect();
+  }
+
+  function scheduleReconnect() {
+    if (isClosed) return;
+    if (t.$sseTimer) clearTimeout(t.$sseTimer);
+    t.$sseTimer = setTimeout(function () {
+      t.$sseTimer = null;
+      // Exponential backoff
+      reconnectDelay = Math.min(reconnectDelay * 2, 30000);
+      connect();
+    }, reconnectDelay);
+  }
+
+  connect(initialRes);
 }
 
 function mergeRestData(scope, data) {
@@ -534,7 +769,7 @@ function initFormScope(form) {
 
   form.__scope = createRenderScope(
     form, null, renderFn, initFn,
-    { $titles: [], $rest: { status: null, data: null, loading: !!rest, headers: {} } }
+    { $titles: [], $rest: { status: null, data: null, loading: !!rest, headers: {}, error: null } }
   );
   form.__scope.$_target.$definingInputs = definingInputs;
   renderFn(form.__scope);
@@ -682,7 +917,7 @@ function __mountFromRouter(el) {
     var renderFn = makeRenderFn(el, el.$formBodyFn);
     el.__scope = createRenderScope(
       el, null, renderFn, el.$formBodyInit,
-      { $titles: [], $rest: { status: null, data: null, loading: !!rest, headers: {} } }
+      { $titles: [], $rest: { status: null, data: null, loading: !!rest, headers: {}, error: null } }
     );
     renderFn(el.__scope);
     __setupI18n(el.__scope, el.__i18n_parent || window.pug_i18n);
@@ -722,7 +957,7 @@ async function __loadFromSrc(el) {
 
   el.__scope = createRenderScope(
     el, null, renderFn, initFn,
-    { $titles: [], $rest: { status: null, data: null, loading: !!(rest && !hasFormBody), headers: {} } }
+    { $titles: [], $rest: { status: null, data: null, loading: !!(rest && !hasFormBody), headers: {}, error: null } }
   );
 
   if (hasFormBody) {
@@ -730,19 +965,13 @@ async function __loadFromSrc(el) {
     __setupI18n(el.__scope, el.__i18n_parent || window.pug_i18n);
     if (rest) {
       var res = await fetchIntoScope(rest, el.__scope);
-      if (res && res.status === 401) {
-        window.$user.logout();
-        return;
-      }
+      if (res && res.status === 401) return;
       el.__scope.$_target.$dirty = false;
       renderFn(el.__scope);
     }
   } else if (rest) {
     var res = await fetchIntoScope(rest, el.__scope);
-    if (res && res.status === 401) {
-      window.$user.logout();
-      return;
-    }
+    if (res && res.status === 401) return;
   }
 
   if (src) {
@@ -874,8 +1103,21 @@ function onUrlChange() {
 
 // === Navigation ===
 
+function isUnsafeScheme(proto) {
+  switch (proto) {
+    case "javascript:":
+    case "vbscript:":
+    case "data:":
+      return true;
+  }
+  return false;
+}
+
 window.navigateTo = function (url) {
   var targetUrl = new URL(url, window.location.href);
+  var proto = targetUrl.protocol;
+  if (isUnsafeScheme(proto))
+    throw new Error("PugPage: refused unsafe URL scheme (" + proto + "): " + url);
   if (targetUrl.origin !== window.location.origin) {
     window.location.assign(targetUrl.href);
     return;
@@ -887,9 +1129,8 @@ window.navigateTo = function (url) {
 function updatePage() {
   if (window.pug_router) {
     var children = window.pug_router.$childScopes;
-    for (var i = 0; i < children.length; i++) {
+    for (var i = 0; i < children.length; i++)
       markMatchingScopes(children[i]);
-    }
   }
 }
 
@@ -970,6 +1211,11 @@ function __boot() {
     if (!target || !target.hasAttribute("href")) return;
     var href = target.getAttribute("href");
     if (!href || href.charAt(0) === "#") { event.preventDefault(); return; }
+    var proto = target.protocol;
+    if (isUnsafeScheme(proto)) {
+      event.preventDefault();
+      throw new Error("PugPage: refused to follow unsafe URL scheme (" + proto + "): " + href);
+    }
     if (target.getAttribute("target") === "_blank") return;
     if (target.hasAttribute("download")) return;
     if (target.origin !== window.location.origin) return;

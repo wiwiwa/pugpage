@@ -12,6 +12,8 @@ let livereloadClients: LiveReloadClient[] = [];
 const reloadIdleMs = 300;
 let lastUpdateTime = 0;
 
+let activeSseConnections = 0;
+
 function scheduleReload() {
   if (lastUpdateTime === 0) setTimeout(reloadIfIdle, reloadIdleMs);
   lastUpdateTime = Date.now();
@@ -96,6 +98,68 @@ export async function startDevServer(opts: {
         return Response.json({ error: "Method not allowed" }, { status: 405 });
       case "/$$dev/api/echo":
         return Response.json({ result: "OK" });
+      case "/$$dev/api/sse-connections": {
+        return Response.json({ count: activeSseConnections });
+      }
+      case "/$$dev/api/sse": {
+        let count = 0;
+        let timer: ReturnType<typeof setInterval>;
+        let active = true;
+        activeSseConnections++;
+        const stream = new ReadableStream({
+          start(controller) {
+            timer = setInterval(() => {
+              count++;
+              try { controller.enqueue(new TextEncoder().encode(`data: {"count": ${count}}\n\n`)); }
+              catch (_) {
+                clearInterval(timer);
+                if (active) {
+                  active = false;
+                  activeSseConnections = Math.max(0, activeSseConnections - 1);
+                }
+              }
+            }, 1000);
+          },
+          cancel() {
+            clearInterval(timer);
+            if (active) {
+              active = false;
+              activeSseConnections = Math.max(0, activeSseConnections - 1);
+            }
+          }
+        });
+        return new Response(stream, {
+          headers: { "Content-Type": "text/event-stream" }
+        });
+      }
+      case "/$$dev/api/sse-auth": {
+        const auth = req.headers.get("Authorization");
+        if (auth !== "Bearer valid-token") {
+          return new Response(null, { status: 401 });
+        }
+        let count = 0;
+        let timer: ReturnType<typeof setInterval>;
+        const stream = new ReadableStream({
+          start(controller) {
+            timer = setInterval(() => {
+              count++;
+              try { controller.enqueue(new TextEncoder().encode(`data: {"count": ${count}}\n\n`)); }
+              catch (_) { clearInterval(timer); }
+            }, 100);
+          },
+          cancel() {
+            clearInterval(timer);
+          }
+        });
+        return new Response(stream, {
+          headers: { "Content-Type": "text/event-stream" }
+        });
+      }
+      case "/$$dev/api/sse-form": {
+        return new Response(new TextEncoder().encode("data: {}\n\n"), {
+          headers: { "Content-Type": "text/event-stream" }
+        });
+      }
     }
     const resp = await serveDir(req, { fsRoot: root, quiet: true });
     if (resp.status !== 404 && resp.status !== 405) return resp;
