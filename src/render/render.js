@@ -225,30 +225,33 @@ function createRenderScope(element, templateKey, renderFn, initFn, initial) {
 
   target.$parentScope.$_target.$childScopes.push(scope);
 
-  if (initFn) {
-    var initProxy = new Proxy(target, {
+  __runInitFn(target, initFn);
+
+  return scope;
+}
+
+function __runInitFn(target, initFn) {
+  if (!initFn) return;
+  var initProxy = new Proxy(target, {
     has(t, prop) {
       if (typeof prop === "string" && prop.charAt(0) === "$" && prop.charAt(1) === "$") return prop in t;
       return true;
     },
-      get(t, p) {
-        if (Object.prototype.hasOwnProperty.call(t, p)) return t[p];
-        switch (p) {
-          case "$user": return window.$user;
-          case "$page": return window.$page;
-          case "window": return window;
-        default:
-          if (typeof p !== "string" || p.charAt(0) === "$") return undefined;
-          if (SCOPE_GLOBALS.indexOf(p) !== -1) return window[p];
-          return undefined;
+    get(t, p) {
+      if (Object.prototype.hasOwnProperty.call(t, p)) return t[p];
+      switch (p) {
+        case "$user": return window.$user;
+        case "$page": return window.$page;
+        case "window": return window;
+      default:
+        if (typeof p !== "string" || p.charAt(0) === "$") return undefined;
+        if (SCOPE_GLOBALS.indexOf(p) !== -1) return window[p];
+        return undefined;
       }
-      },
-      set(t, p, v) { t[p] = v; return true; }
-    });
-    initFn(initProxy);
-  }
-
-  return scope;
+    },
+    set(t, p, v) { t[p] = v; return true; }
+  });
+  initFn(initProxy);
 }
 
 function markDirty(scope) {
@@ -987,6 +990,7 @@ async function __loadFromSrc(el) {
       el.__tplFn = pageFn;
       var srcRenderFn = makeRenderFn(el, pageFn);
       el.__scope.$_target.$renderFn = srcRenderFn;
+      __runInitFn(el.__scope.$_target, pageFn.init);
       srcRenderFn(el.__scope);
     }
   }
