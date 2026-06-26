@@ -1241,7 +1241,7 @@ function __boot() {
         data[entry[0]] = entry[1];
       }
 
-      var method = (form.method || "POST").toUpperCase();
+      var method = (form.getAttribute("method") || "POST").toUpperCase();
       var fetchOpts = { method: method, headers: { "Accept": "application/json" } };
       var fetchUrl = action;
 
@@ -1279,7 +1279,7 @@ function __boot() {
     }
 
     try {
-      var method = (form.method || "POST").toUpperCase();
+      var method = (form.getAttribute("method") || "POST").toUpperCase();
       var fetchOpts = { method: method, headers: { "Accept": "application/json" } };
       var fetchUrl = action;
 
